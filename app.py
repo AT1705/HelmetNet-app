@@ -11,7 +11,6 @@ from pathlib import Path
 import tempfile
 import time
 import os
-from datetime import timedelta
 from streamlit_webrtc import VideoTransformerBase, webrtc_streamer, WebRtcMode, RTCConfiguration
 
 # ============================================================
@@ -168,28 +167,38 @@ st.markdown("""
 # ============================================================
 NO_HELMET_LABELS = ["no helmet", "no_helmet", "no-helmet"]
 CONFIDENCE_THRESHOLD = 0.25
-FRAME_SKIP = 3  # Optimization from app_2.py
+FRAME_SKIP = 3  # Optimization
+DEFAULT_MODEL_PATH = "best.pt"
 
 # ============================================================
-# UTILS & LOGIC (FROM APP_2.PY)
+# UTILS & LOGIC
 # ============================================================
 @st.cache_resource
-def load_model(model_source):
-    try:
-        if isinstance(model_source, str) and Path(model_source).exists():
-            model = YOLO(model_source)
-            return model
-        elif isinstance(model_source, str):
-            # Fallback or initial load
-            return YOLO("yolov8n.pt")
-        else:
-            # Handle direct file object if passed
-            return YOLO(model_source)
-    except Exception as e:
-        return None
+def load_model(model_path):
+    """
+    Robust model loader that checks multiple paths and handles missing files.
+    """
+    # 1. Check exactly where user said
+    if model_path and os.path.exists(model_path):
+        try:
+            return YOLO(model_path)
+        except Exception as e:
+            st.error(f"❌ Found {model_path} but failed to load. Is it a valid .pt file?")
+            return None
+
+    # 2. Check current working directory
+    cwd_path = os.path.join(os.getcwd(), model_path)
+    if os.path.exists(cwd_path):
+        return YOLO(cwd_path)
+        
+    # 3. Last ditch: Check if it's in the root dir if we are in a subdir
+    parent_path = os.path.join(os.path.dirname(os.getcwd()), model_path)
+    if os.path.exists(parent_path):
+        return YOLO(parent_path)
+
+    return None
 
 def play_alarm():
-    # Logic from app_2.py (Rate limited)
     if 'last_alarm' not in st.session_state: st.session_state.last_alarm = 0
     if time.time() - st.session_state.last_alarm > 3:
         if Path("alert.mp3").exists():
@@ -197,29 +206,19 @@ def play_alarm():
         st.session_state.last_alarm = time.time()
 
 def draw_boxes(frame, detections):
-    """
-    Manually draws bounding boxes (Logic from app_2.py).
-    """
     img = frame.copy()
     for det in detections:
         x1, y1, x2, y2 = map(int, det['bbox'])
-        # Red for no helmet, Green for helmet
         color = (0, 0, 255) if det['class'] in NO_HELMET_LABELS else (0, 255, 0)
         label = f"{det['class']} {det['confidence']:.2f}"
-        
-        # Draw Rectangle
         cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
-        
-        # Draw Label Background
         (w, h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
         cv2.rectangle(img, (x1, y1 - 20), (x1 + w, y1), color, -1)
         cv2.putText(img, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
     return img
 
 def detect_frame(frame, model, conf_threshold):
-    # Logic from app_2.py
     results = model.predict(frame, conf=conf_threshold, imgsz=640, verbose=False, device='cpu')
-    
     helmet_count = 0
     no_helmet_count = 0
     detections = []
@@ -229,7 +228,6 @@ def detect_frame(frame, model, conf_threshold):
         cls_name = model.names[cls_id].lower()
         conf = float(box.conf)
         bbox = box.xyxy[0].cpu().numpy().tolist()
-        
         detections.append({'class': cls_name, 'confidence': conf, 'bbox': bbox})
         
         if cls_name in NO_HELMET_LABELS:
@@ -244,7 +242,7 @@ def detect_frame(frame, model, conf_threshold):
     }
 
 # ============================================================
-# WEBRTC CLASS (FROM APP_2.PY)
+# WEBRTC CLASS
 # ============================================================
 class HelmetTransformer(VideoTransformerBase):
     def __init__(self):
@@ -253,7 +251,7 @@ class HelmetTransformer(VideoTransformerBase):
         self.helmet = 0
         self.no_helmet = 0
         self.frame_cnt = 0
-        self.last_dets = [] # Cache detections
+        self.last_dets = [] 
         self.alert = False
         
     def set_model(self, model, conf):
@@ -265,8 +263,6 @@ class HelmetTransformer(VideoTransformerBase):
         if self.model is None: return img
         
         self.frame_cnt += 1
-        
-        # OPTIMIZATION: Run AI only every 3rd frame
         if self.frame_cnt % FRAME_SKIP == 0:
             try:
                 detections, stats = detect_frame(img, self.model, self.conf)
@@ -276,34 +272,54 @@ class HelmetTransformer(VideoTransformerBase):
                 self.alert = stats['alert']
             except: pass
             
-        # Draw the (new or cached) boxes
         return draw_boxes(img, self.last_dets)
 
 # ============================================================
-# SIDEBAR (UI FROM APP.PY + LOGIC FROM APP_2.PY)
+# SIDEBAR
 # ============================================================
 with st.sidebar:
     st.markdown("### ⚙️ Configuration")
     st.markdown("---")
     
     st.markdown("**🤖 Model Settings**")
-    st.text_input("Model Path", "best.pt")
+    
+    # Allow user to type path, defaulting to best.pt
+    model_path_input = st.text_input("Model Path", DEFAULT_MODEL_PATH)
+    
+    # Also allow upload if they want to override
+    model_file = st.file_uploader("Or Upload Model (.pt)", type=['pt'], label_visibility="collapsed")
+    
+    if model_file:
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pt') as f:
+            f.write(model_file.read())
+            final_model_path = f.name
+        st.success("✅ Custom uploaded model loaded")
+    else:
+        final_model_path = model_path_input
+
+    # DEBUG SECTION TO HELP YOU FIND THE FILE
+    with st.expander("🛠️ Debug: Cannot find model?"):
+        st.write(f"**Current Directory:** `{os.getcwd()}`")
+        st.write("**Files in Directory:**")
+        st.code("\n".join(os.listdir(os.getcwd())))
+        if os.path.exists(final_model_path):
+            st.success(f"✅ System sees: {final_model_path}")
+            st.caption(f"Size: {os.path.getsize(final_model_path) / 1024 / 1024:.2f} MB")
+        else:
+            st.error(f"❌ System CANNOT find: {final_model_path}")
 
     confidence_threshold = st.slider("🎯 Confidence", 0.1, 1.0, CONFIDENCE_THRESHOLD, 0.05)
     
     st.markdown("---")
-    st.markdown("**📊 Session Stats**")
-    if 'total_detections' not in st.session_state:
-        st.session_state.total_detections = 0
+    if 'total_detections' not in st.session_state: st.session_state.total_detections = 0
     st.metric("Total Detections", st.session_state.total_detections)
-    
-    st.markdown("---")
-    st.caption("🚀 CSC738 Project")
 
 # LOAD MODEL
-model = load_model("best.pt")
+model = load_model(final_model_path)
+
 if not model:
-    st.sidebar.warning("⚠️ Using default YOLOv8n")
+    st.warning(f"⚠️ Could not load '{final_model_path}'. Using standard YOLOv8n as fallback.")
+    st.caption("Check the 'Debug' section in the sidebar to see your file structure.")
     model = YOLO("yolov8n.pt")
 
 # ============================================================
@@ -314,14 +330,12 @@ st.markdown('<p class="sub-header">🎯 Optimized Real-Time Safety Monitoring</p
 
 tab1, tab2, tab3 = st.tabs(["Image Detection", "Video Detection", "Real-Time Detection"])
 
-# --- TAB 1: IMAGE DETECTION ---
+# --- TAB 1: IMAGE ---
 with tab1:
     st.markdown("### 📸 Upload an Image")
-    
     col1, col2 = st.columns([2, 1])
     with col2:
-        st.markdown('<div class="info-box"><strong>💡 Tips:</strong><br>• Clear, well-lit images<br>• JPG, PNG, BMP</div>', unsafe_allow_html=True)
-    
+        st.markdown('<div class="info-box"><strong>💡 Tips:</strong><br>• JPG, PNG, BMP</div>', unsafe_allow_html=True)
     with col1:
         img_file = st.file_uploader("Choose image", ["jpg", "jpeg", "png", "bmp"], key="img", label_visibility="collapsed")
     
@@ -330,48 +344,34 @@ with tab1:
         frame = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
         
         with st.spinner("🔍 Analyzing..."):
-            # Use logic from app_2 (draw_boxes)
             dets, stats = detect_frame(frame, model, confidence_threshold)
             annotated = draw_boxes(frame, dets)
             st.session_state.total_detections += len(dets)
             
         annotated_rgb = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
-        
         c1, c2 = st.columns(2, gap="large")
         with c1:
-            st.markdown("**📷 Original**")
-            st.image(img_file, use_container_width=True)
+            st.image(img_file, caption="Original", use_container_width=True)
         with c2:
-            st.markdown("**🎯 Result**")
-            st.image(annotated_rgb, use_container_width=True)
+            st.image(annotated_rgb, caption="Result", use_container_width=True)
         
-        # Alerts (UI from app.py)
         if stats['alert']:
             st.markdown('<div class="alert-danger">⚠️ NO HELMET DETECTED!</div>', unsafe_allow_html=True)
             play_alarm()
         else:
             st.markdown('<div class="alert-success">✅ All Safe!</div>', unsafe_allow_html=True)
             
-        st.markdown("### 📊 Summary")
         m1, m2, m3 = st.columns(3)
         m1.metric("🟢 Helmets", stats['helmet_count'])
         m2.metric("🔴 No Helmets", stats['no_helmet_count'])
         m3.metric("📝 Total Objects", len(dets))
-        
-        # Download
-        temp_img = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg')
-        cv2.imwrite(temp_img.name, annotated)
-        with open(temp_img.name, 'rb') as f:
-            st.download_button("📥 Download Result", f, f"result_{img_file.name}", "image/jpeg")
 
-# --- TAB 2: VIDEO DETECTION (OPTIMIZED LOOP) ---
+# --- TAB 2: VIDEO ---
 with tab2:
     st.markdown("### 🎥 Upload a Video")
-    
     col1, col2 = st.columns([2, 1])
     with col2:
-        st.markdown('<div class="info-box"><strong>💡 Fast Mode:</strong><br>• Optimized frame skipping<br>• Live inference preview<br>• MP4, AVI, MOV</div>', unsafe_allow_html=True)
-    
+        st.markdown('<div class="info-box"><strong>💡 Fast Mode:</strong><br>• MP4, AVI, MOV</div>', unsafe_allow_html=True)
     with col1:
         vid_file = st.file_uploader("Choose video", ["mp4", "avi", "mov", "mkv"], key="vid", label_visibility="collapsed")
     
@@ -387,11 +387,9 @@ with tab2:
             fps = int(cap.get(cv2.CAP_PROP_FPS))
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             
-            # Prepare Output
             outfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
             out = cv2.VideoWriter(outfile.name, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
             
-            # Layout for live updates
             st_frame = st.empty()
             st_metrics = st.empty()
             st_progress = st.progress(0)
@@ -403,10 +401,8 @@ with tab2:
             while cap.isOpened():
                 ret, frame = cap.read()
                 if not ret: break
-                
                 frame_count += 1
                 
-                # --- OPTIMIZATION LOGIC (From app_2) ---
                 if frame_count % FRAME_SKIP == 0 or frame_count == 1:
                     cached_detections, current_stats = detect_frame(frame, model, confidence_threshold)
                 
@@ -415,42 +411,25 @@ with tab2:
                 
                 if current_stats['alert']: play_alarm()
                 
-                # Update UI
-                st_frame.image(cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB), 
-                             caption=f"Processing Frame {frame_count}/{total_frames}",
-                             use_container_width=True)
-                
-                # Metric Container styling
+                st_frame.image(cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB), use_container_width=True)
                 with st_metrics.container():
                     c1, c2, c3 = st.columns(3)
                     c1.metric("🟢 Helmets", current_stats['helmet_count'])
                     c2.metric("🔴 Violations", current_stats['no_helmet_count'])
                     c3.metric("⏱️ Progress", f"{int(frame_count/total_frames*100)}%")
-                
                 st_progress.progress(frame_count / total_frames)
             
             cap.release()
             out.release()
-            
             st.success("✅ Processing Complete!")
-            st.session_state.total_detections += (current_stats['helmet_count'] + current_stats['no_helmet_count'])
-            
             with open(outfile.name, 'rb') as f:
                 st.download_button("📥 Download Result", f, "result.mp4", "video/mp4")
 
-# --- TAB 3: REAL-TIME DETECTION (WEBRTC) ---
+# --- TAB 3: REAL-TIME ---
 with tab3:
     st.markdown("### 📱 Real-Time Live Detection")
-    st.markdown("""
-    <div class="info-box">
-    <strong>🎥 Live Webcam:</strong><br>
-    • Click "START" below<br>
-    • Uses optimized frame skipping for smoother performance<br>
-    • Works on mobile & desktop
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown('<div class="info-box"><strong>🎥 Live Webcam:</strong><br>• Click "START" below<br>• Optimized frame skipping</div>', unsafe_allow_html=True)
     
-    # Webrtc Logic from app_2 wrapped in UI
     ctx = webrtc_streamer(
         key="helmet-live",
         mode=WebRtcMode.SENDRECV,
@@ -461,11 +440,7 @@ with tab3:
     
     if ctx.video_processor:
         ctx.video_processor.set_model(model, confidence_threshold)
-        
-        st.markdown("### 📊 Live Stats")
         m1, m2 = st.columns(2)
-        
-        # These will update automatically via Streamlit re-runs triggered by WebRTC
         m1.metric("🟢 Helmets", ctx.video_processor.helmet)
         m2.metric("🔴 Violations", ctx.video_processor.no_helmet)
         
