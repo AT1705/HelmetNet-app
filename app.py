@@ -287,17 +287,9 @@ with st.sidebar:
     st.markdown("---")
     
     st.markdown("**🤖 Model Settings**")
-    
-    # Logic from app_2: File uploader for custom model
-    model_file = st.file_uploader("Upload Model (.pt)", type=['pt'], label_visibility="collapsed")
-    
-    if model_file:
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.pt') as f:
-            f.write(model_file.read())
-            model_path = f.name
-        st.success("✅ Custom model loaded")
-    else:
-        model_path = st.text_input("Model Path", "best.pt")
+
+    model_path = "best.pt"
+    st.text_input("Model Path", model_path)
 
     confidence_threshold = st.slider("🎯 Confidence", 0.1, 1.0, CONFIDENCE_THRESHOLD, 0.05)
     
@@ -487,3 +479,4 @@ with tab3:
 
 st.markdown("---")
 st.caption("🚀 CSC738 | Helmet Safety Detection | © 2025")
+
