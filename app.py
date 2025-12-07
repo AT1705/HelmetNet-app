@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 from pathlib import Path
 import tempfile
+import time
 from datetime import timedelta
 from PIL import Image
 import av
@@ -34,7 +35,7 @@ st.markdown("""
         padding-top: 1.5rem !important; 
     }
     
-    /* Headers - Uses theme text color but keeps safety yellow underline */
+    /* Headers */
     .main-header {
         font-size: 2.5rem; 
         font-weight: 800; 
@@ -59,7 +60,7 @@ st.markdown("""
         padding-bottom: 0.5rem;
     }
     
-    /* Tabs - Adaptive Backgrounds */
+    /* Tabs */
     .stTabs [data-baseweb="tab-list"] {
         background: var(--secondary-background-color); 
         padding: 0.5rem; 
@@ -75,10 +76,10 @@ st.markdown("""
     }
     .stTabs [aria-selected="true"] {
         background: #FFD700 !important; 
-        color: #1E3A8A !important; /* Keep text dark on yellow button */
+        color: #1E3A8A !important; 
     }
     
-    /* Alerts - Text forced to white because backgrounds are fixed gradients */
+    /* Alerts */
     .alert-danger {
         background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%); 
         color: white; 
@@ -106,28 +107,7 @@ st.markdown("""
     }
     @keyframes pulse {0%, 100% {opacity: 1; transform: scale(1);} 50% {opacity: 0.85; transform: scale(1.02);}}
     
-    /* Buttons */
-    .stButton > button {
-        background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%); 
-        color: #1E3A8A; /* Dark text on yellow button is always safe */
-        border: none;
-        border-radius: 10px;
-        padding: 0.6rem 2rem; 
-        font-weight: 700; 
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    }
-    .stButton > button:hover {
-        transform: translateY(-2px); 
-        box-shadow: 0 6px 12px rgba(0,0,0,0.15);
-        color: #1E3A8A;
-    }
-    .stDownloadButton > button {
-        background: linear-gradient(135deg, #1E3A8A 0%, #3B82F6 100%); 
-        color: white;
-        border: none;
-    }
-    
-    /* Metrics - Adaptive Card */
+    /* Metrics */
     [data-testid="stMetricValue"] {
         font-size: 1.8rem !important; 
         font-weight: 700 !important; 
@@ -141,19 +121,9 @@ st.markdown("""
         border-left: 4px solid #FFD700;
     }
     
-    /* File uploader */
-    [data-testid="stFileUploader"] {
-        background: var(--secondary-background-color); 
-        padding: 1.5rem; 
-        border-radius: 10px; 
-        border: 2px dashed #FFD700;
-    }
-    
-    audio {display: none;}
-    
-    /* Info Box - Uses transparency to blend in both modes */
+    /* Info Box */
     .info-box {
-        background: rgba(59, 130, 246, 0.1); /* Transparent Blue */
+        background: rgba(59, 130, 246, 0.1); 
         padding: 1rem; 
         border-radius: 10px; 
         border-left: 4px solid #1E3A8A; 
@@ -180,7 +150,7 @@ def load_model(path):
             model = YOLO(path)
             st.sidebar.success("✅ Model loaded")
             return model
-        st.sidebar.warning("⚠️ Model not found")
+        st.sidebar.warning("⚠️ Model not found, using yolov8n")
         return YOLO("yolov8n.pt")
     except Exception as e:
         st.sidebar.error(f"Error: {e}")
@@ -197,13 +167,17 @@ alarm_audio = load_alarm()
 
 def play_alarm():
     if alarm_audio:
-        if 'alarm_counter' not in st.session_state:
-            st.session_state.alarm_counter = 0
-        st.session_state.alarm_counter += 1
-        st.audio(alarm_audio, format="audio/mp3", autoplay=True)
+        # Use a timestamp to prevent spamming audio every millisecond
+        if 'last_alarm_time' not in st.session_state:
+            st.session_state.last_alarm_time = 0
+        
+        current_time = time.time()
+        if current_time - st.session_state.last_alarm_time > 3: # Play max once every 3 seconds
+            st.audio(alarm_audio, format="audio/mp3", autoplay=True)
+            st.session_state.last_alarm_time = current_time
 
 # ============================================================
-# DETECTION FUNCTIONS
+# DETECTION FUNCTION (SINGLE FRAME)
 # ============================================================
 def detect_frame(frame, model, conf_threshold):
     results = model.predict(frame, conf=conf_threshold, verbose=False, device='cpu')
@@ -243,64 +217,8 @@ def process_image(uploaded_file, model, conf_threshold):
         st.error(f"❌ Error: {e}")
         return None, None
 
-def process_video(uploaded_file, model, conf_threshold, progress_placeholder):
-    try:
-        temp_input = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
-        temp_input.write(uploaded_file.read())
-        temp_input.close()
-
-        cap = cv2.VideoCapture(temp_input.name)
-        if not cap.isOpened():
-            st.error("❌ Failed to open video")
-            return None, None
-
-        fps = int(cap.get(cv2.CAP_PROP_FPS))
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-
-        temp_output = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
-        out = cv2.VideoWriter(temp_output.name, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
-
-        frame_num = helmet_count = no_helmet_count = 0
-        timestamps = []
-        prog_bar = progress_placeholder.progress(0)
-        status = progress_placeholder.empty()
-
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break
-
-            frame_num += 1
-            annotated, results = detect_frame(frame, model, conf_threshold)
-            out.write(annotated)
-
-            helmet_count += results['helmet_count']
-            no_helmet_count += results['no_helmet_count']
-            if results['no_helmet_count'] > 0:
-                timestamps.append(frame_num / fps)
-
-            prog_bar.progress(frame_num / total_frames)
-            status.text(f"Frame {frame_num}/{total_frames}")
-
-        cap.release()
-        out.release()
-
-        return temp_output.name, {
-            'total_frames': total_frames,
-            'helmet_count': helmet_count,
-            'no_helmet_count': no_helmet_count,
-            'no_helmet_timestamps': timestamps,
-            'fps': fps,
-            'duration': total_frames / fps
-        }
-    except Exception as e:
-        st.error(f"❌ Error: {e}")
-        return None, None
-
 # ============================================================
-# REAL-TIME VIDEO TRANSFORMER
+# REAL-TIME VIDEO TRANSFORMER (WEBRTC)
 # ============================================================
 class HelmetDetectionTransformer(VideoTransformerBase):
     def __init__(self):
@@ -342,7 +260,6 @@ class HelmetDetectionTransformer(VideoTransformerBase):
                     else:
                         helmet_count += 1
                 
-                # Update counts
                 self.helmet_count = helmet_count
                 self.no_helmet_count = no_helmet_count
                 self.alert = no_helmet_count > 0
@@ -422,6 +339,7 @@ with tab1:
             else:
                 st.markdown('<div class="alert-success">✅ All Safe!</div>', unsafe_allow_html=True)
             
+            # Metrics
             st.markdown("### 📊 Summary")
             m1, m2, m3, m4 = st.columns(4)
             m1.metric("🟢 Helmets", results['helmet_count'])
@@ -430,72 +348,107 @@ with tab1:
             avg_conf = np.mean([d['confidence'] for d in results['detections']]) if results['detections'] else 0
             m4.metric("🎯 Confidence", f"{avg_conf:.1%}")
             
-            if results['detections']:
-                with st.expander("🔍 Details"):
-                    for i, d in enumerate(results['detections'], 1):
-                        c_a, c_b, c_c = st.columns([1, 2, 2])
-                        c_a.markdown(f"**#{i}**")
-                        emoji = "🔴" if d['class'] in NO_HELMET_LABELS else "🟢"
-                        c_b.markdown(f"{emoji} `{d['class']}`")
-                        c_c.markdown(f"**{d['confidence']:.1%}**")
-            
             temp_img = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg')
             cv2.imwrite(temp_img.name, annotated)
             with open(temp_img.name, 'rb') as f:
                 st.download_button("📥 Download", f, f"result_{uploaded_image.name}", "image/jpeg")
 
-# VIDEO TAB
+# VIDEO TAB (UPDATED FOR LIVE INFERENCE)
 with tab2:
     st.markdown("### 🎥 Upload a Video")
     
     col1, col2 = st.columns([2, 1])
     with col2:
-        st.markdown('<div class="info-box"><strong>💡 Tips:</strong><br>• MP4, MOV, AVI<br>• Live progress<br>• Downloadable</div>', unsafe_allow_html=True)
+        st.markdown('<div class="info-box"><strong>💡 Live Inference:</strong><br>• See detections in real-time<br>• Auto-saves result<br>• Download when done</div>', unsafe_allow_html=True)
     
     with col1:
         uploaded_video = st.file_uploader("Choose video", ["mp4", "mov", "avi", "mkv"], key="vid_up", label_visibility="collapsed")
     
     if uploaded_video:
-        prog = st.empty()
-        with st.spinner("🎬 Processing..."):
-            output, summary = process_video(uploaded_video, model, confidence_threshold, prog)
-        prog.empty()
-        
-        if output is not None and summary is not None:
-            st.success("✅ Complete!")
-            st.session_state.total_detections += summary['helmet_count'] + summary['no_helmet_count']
-            
-            st.markdown("### 🎬 Result")
-            st.video(output)
-            
-            if summary['no_helmet_count'] > 0:
-                st.markdown('<div class="alert-danger">⚠️ VIOLATIONS DETECTED!</div>', unsafe_allow_html=True)
-                play_alarm()
-            else:
-                st.markdown('<div class="alert-success">✅ All Safe!</div>', unsafe_allow_html=True)
-            
-            st.markdown("### 📊 Summary")
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("🎞️ Frames", summary['total_frames'])
-            c2.metric("🟢 Helmets", summary['helmet_count'])
-            c3.metric("🔴 No Helmets", summary['no_helmet_count'])
-            c4.metric("⏱️ Duration", str(timedelta(seconds=int(summary['duration']))))
-            
-            if summary['no_helmet_timestamps']:
-                with st.expander(f"⚠️ Violations ({len(summary['no_helmet_timestamps'])})"):
-                    unique = []
-                    last = -999
-                    for ts in summary['no_helmet_timestamps']:
-                        if ts - last > 1:
-                            unique.append(ts)
-                            last = ts
-                    for i, ts in enumerate(unique[:15], 1):
-                        st.write(f"{i}. `{str(timedelta(seconds=int(ts)))}`")
-                    if len(unique) > 15:
-                        st.caption(f"...+{len(unique)-15} more")
-            
-            with open(output, 'rb') as f:
-                st.download_button("📥 Download", f, "result.mp4", "video/mp4")
+        # Create a button to start processing so it doesn't auto-start
+        if st.button("▶️ Start Processing", type="primary"):
+            try:
+                # Save uploaded file to temp
+                tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+                tfile.write(uploaded_video.read())
+                tfile.close()
+
+                cap = cv2.VideoCapture(tfile.name)
+                
+                # Get video properties
+                fps = int(cap.get(cv2.CAP_PROP_FPS))
+                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                
+                # Prepare output writer for download later
+                output_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+                out = cv2.VideoWriter(output_file.name, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
+
+                # Layout for Live View
+                st.markdown("### 🎬 Live Inference View")
+                
+                # Placeholders for dynamic content
+                video_placeholder = st.empty()
+                metrics_placeholder = st.empty()
+                progress_bar = st.progress(0)
+                
+                frame_count = 0
+                total_helmet = 0
+                total_no_helmet = 0
+                
+                while cap.isOpened():
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+                        
+                    frame_count += 1
+                    
+                    # Detect
+                    annotated, results = detect_frame(frame, model, confidence_threshold)
+                    
+                    # Write to file
+                    out.write(annotated)
+                    
+                    # Update counts
+                    total_helmet += results['helmet_count']
+                    total_no_helmet += results['no_helmet_count']
+                    
+                    # Alert Logic (Live)
+                    if results['alert']:
+                        play_alarm()
+                    
+                    # Convert for Display (BGR -> RGB)
+                    frame_rgb = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
+                    
+                    # Update UI - The 'Live' part
+                    video_placeholder.image(frame_rgb, caption=f"Processing Frame {frame_count}/{total_frames}", use_container_width=True)
+                    
+                    # Update Live Metrics in columns
+                    with metrics_placeholder.container():
+                        c1, c2, c3 = st.columns(3)
+                        c1.metric("🟢 Current Helmets", results['helmet_count'])
+                        c2.metric("🔴 Current Violations", results['no_helmet_count'])
+                        c3.metric("⏱️ Progress", f"{int((frame_count/total_frames)*100)}%")
+                    
+                    progress_bar.progress(frame_count / total_frames)
+                
+                cap.release()
+                out.release()
+                
+                st.success("✅ Processing Complete!")
+                
+                # Download Button
+                with open(output_file.name, 'rb') as f:
+                    st.download_button(
+                        label="📥 Download Processed Video",
+                        data=f,
+                        file_name="processed_video.mp4",
+                        mime="video/mp4"
+                    )
+                    
+            except Exception as e:
+                st.error(f"Error processing video: {e}")
 
 # REAL-TIME TAB
 with tab3:
@@ -507,49 +460,37 @@ with tab3:
     • Click "START" to enable your webcam<br>
     • Real-time bounding boxes appear automatically<br>
     • Click "STOP" to turn off the camera<br>
-    • Works on desktop and mobile browsers<br><br>
-    <em>⚠️ Note: Allow camera permission when prompted</em>
     </div>
     """, unsafe_allow_html=True)
     
     st.markdown("---")
     
-    # WebRTC Configuration for better connectivity
     RTC_CONFIGURATION = RTCConfiguration(
         {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
     )
     
-    # Initialize session state for WebRTC
     if 'webrtc_ctx' not in st.session_state:
         st.session_state.webrtc_ctx = None
     
-    # Start/Stop buttons
     col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 3])
     
     with col_btn1:
         start_webcam = st.button("▶️ START WEBCAM", use_container_width=True, type="primary")
-    
     with col_btn2:
         stop_webcam = st.button("⏹️ STOP WEBCAM", use_container_width=True)
     
-    st.markdown("---")
-    
-    # Webcam state management
     if 'webcam_running' not in st.session_state:
         st.session_state.webcam_running = False
     
     if start_webcam:
         st.session_state.webcam_running = True
-    
     if stop_webcam:
         st.session_state.webcam_running = False
         st.rerun()
     
-    # Display webcam stream
     if st.session_state.webcam_running:
         st.markdown("### 📹 Live Detection Stream")
         
-        # Create video transformer
         webrtc_ctx = webrtc_streamer(
             key="helmet-detection",
             mode=WebRtcMode.SENDRECV,
@@ -559,55 +500,28 @@ with tab3:
             async_processing=True,
         )
         
-        # Set model after stream starts
         if webrtc_ctx.video_processor:
             webrtc_ctx.video_processor.set_model(model, confidence_threshold)
-        
-        # Live statistics
-        st.markdown("### 📊 Live Detection Statistics")
-        
-        metric_placeholder = st.empty()
-        alert_placeholder = st.empty()
-        
-        # Update stats if stream is active
-        if webrtc_ctx.video_processor:
-            m1, m2, m3 = metric_placeholder.columns(3)
             
+            m1, m2, m3 = st.columns(3)
             with m1:
-                st.metric("🟢 Helmets Detected", webrtc_ctx.video_processor.helmet_count)
+                st.metric("🟢 Helmets", webrtc_ctx.video_processor.helmet_count)
             with m2:
                 st.metric("🔴 No Helmets", webrtc_ctx.video_processor.no_helmet_count)
             with m3:
-                st.metric("🎞️ Frames Processed", webrtc_ctx.video_processor.frame_count)
+                st.metric("🎞️ Frames", webrtc_ctx.video_processor.frame_count)
             
-            # Alert display
             if webrtc_ctx.video_processor.alert:
-                alert_placeholder.markdown(
-                    '<div class="alert-danger">⚠️ WARNING: NO HELMET DETECTED!</div>',
-                    unsafe_allow_html=True
-                )
-                if webrtc_ctx.video_processor.frame_count % 30 == 0:  # Play alarm every 30 frames
+                if webrtc_ctx.video_processor.frame_count % 30 == 0:
                     play_alarm()
-            else:
-                alert_placeholder.markdown(
-                    '<div class="alert-success">✅ All Safe - Helmets Detected</div>',
-                    unsafe_allow_html=True
-                )
-        
-        st.info("💡 Camera is active. Click 'STOP WEBCAM' to turn it off.")
     
     else:
         st.markdown("### 🎥 Webcam Inactive")
-        st.info("👆 Click 'START WEBCAM' button above to begin real-time detection")
-        
-        # Show placeholder - Adaptive Border
         st.markdown("""
         <div style="background: var(--secondary-background-color); padding: 100px; border-radius: 15px; text-align: center; border: 3px dashed #FFD700;">
             <h2 style="color: var(--text-color); opacity: 0.5;">📷 Webcam Feed Will Appear Here</h2>
-            <p style="color: var(--text-color); opacity: 0.5;">Press START to enable live detection with bounding boxes</p>
         </div>
         """, unsafe_allow_html=True)
 
 st.markdown("---")
-
 st.caption("🚀 CSC738 | Helmet Safety Detection | © 2025")
