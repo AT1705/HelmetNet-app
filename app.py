@@ -71,7 +71,7 @@ st.markdown("""
 # CONFIG
 # ============================================================
 NO_HELMET_LABELS = ["no helmet", "no_helmet", "no-helmet"]
-MODEL_PATH = "best.onnx"
+MODEL_PATH = "best.pt"
 CONFIDENCE_THRESHOLD = 0.25
 
 # ============================================================
@@ -514,4 +514,5 @@ with tab3:
         """, unsafe_allow_html=True)
 
 st.markdown("---")
+
 st.caption("🚀 CSC738 | Helmet Safety Detection | © 2025")
