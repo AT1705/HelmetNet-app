@@ -261,7 +261,6 @@ class HelmetDetectionTransformer(VideoTransformerBase):
 # SIDEBAR
 # ============================================================
 with st.sidebar:
-    st.image("https://img.icons8.com/color/96/000000/motorcycle-helmet.png", width=100)
     st.markdown("### ⚙️ Configuration")
     st.markdown("---")
     
@@ -516,3 +515,4 @@ with tab3:
 st.markdown("---")
 
 st.caption("🚀 CSC738 | Helmet Safety Detection | © 2025")
+
