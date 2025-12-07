@@ -175,18 +175,16 @@ DEFAULT_MODEL_PATH = "best.pt"
 # UTILS & LOGIC (FROM APP_2.PY)
 # ============================================================
 @st.cache_resource
-def load_model(model_source):
+def load_model(path):
     try:
-        if isinstance(model_source, str) and Path(model_source).exists():
-            model = YOLO(model_source)
+        if Path(path).exists():
+            model = YOLO(path)
+            st.sidebar.success("✅ Model loaded")
             return model
-        elif isinstance(model_source, str):
-            # Fallback
-            return YOLO("yolov8n.pt")
-        else:
-            # Handle direct file object if passed
-            return YOLO(model_source)
+        st.sidebar.warning("⚠️ Model not found")
+        return YOLO("yolov8n.pt")
     except Exception as e:
+        st.sidebar.error(f"Error: {e}")
         return None
 
 def play_alarm():
@@ -488,3 +486,4 @@ with tab3:
 
 st.markdown("---")
 st.caption("🚀 CSC738 | Helmet Safety Detection | © 2025")
+
