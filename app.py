@@ -243,7 +243,7 @@ def detect_frame(frame, model, conf_threshold):
     }
 
 # ============================================================
-# WEBRTC CLASS (FROM APP_2.PY)
+# WEBRTC CLASS
 # ============================================================
 class HelmetTransformer(VideoTransformerBase):
     def __init__(self):
@@ -279,7 +279,7 @@ class HelmetTransformer(VideoTransformerBase):
         return draw_boxes(img, self.last_dets)
 
 # ============================================================
-# SIDEBAR (UI FROM APP.PY + LOGIC FROM APP_2.PY)
+# SIDEBAR
 # ============================================================
 with st.sidebar:
     st.markdown("### ⚙️ Configuration")
@@ -298,7 +298,6 @@ with st.sidebar:
     st.metric("Total Detections", st.session_state.total_detections)
     
     st.markdown("---")
-    st.caption("🚀 CSC738 Project")
 
 # LOAD MODEL
 model = load_model(DEFAULT_MODEL_PATH)
@@ -309,8 +308,8 @@ if not model:
 # ============================================================
 # MAIN APP UI
 # ============================================================
-st.markdown('<h1 class="main-header">🛵 AI Helmet Detection System</h1>', unsafe_allow_html=True)
-st.markdown('<p class="sub-header">🎯 Optimized Real-Time Safety Monitoring</p>', unsafe_allow_html=True)
+st.markdown('<h1 class="main-header">🛵 HelmetNet </h1>', unsafe_allow_html=True)
+st.markdown('<p class="sub-header">AI Helmet Detection System<</p>', unsafe_allow_html=True)
 
 tab1, tab2, tab3 = st.tabs(["Image Detection", "Video Detection", "Real-Time Detection"])
 
@@ -476,7 +475,8 @@ with tab3:
             st.markdown('<div class="alert-success">✅ Area Secure</div>', unsafe_allow_html=True)
 
 st.markdown("---")
-st.caption("🚀 CSC738 | Helmet Safety Detection | © 2025")
+st.caption("🚀 HelmetNet App | © 2025")
+
 
 
 
