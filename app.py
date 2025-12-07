@@ -1,6 +1,6 @@
 """
 AI Helmet Detection System (CSC738)
-Enhanced with Real-Time Detection & Modern Safety Theme UI
+Enhanced with Real-Time Detection & Modern Safety Theme UI (Dark/Light Mode Compatible)
 """
 
 import streamlit as st
@@ -25,45 +25,141 @@ st.set_page_config(
 )
 
 # ============================================================
-# SAFETY THEME CSS
+# SAFETY THEME CSS (ADAPTIVE)
 # ============================================================
 st.markdown("""
 <style>
-    .block-container {padding-top: 1.5rem !important; background: #F5F5F5;}
-    .main-header {font-size: 2.5rem; font-weight: 800; color: #1E3A8A; text-align: center; text-shadow: 2px 2px 4px rgba(0,0,0,0.1);}
-    .sub-header {text-align: center; font-size: 1.1rem; color: #4B5563; font-weight: 500; margin-bottom: 1.5rem;}
+    /* Global Styles using Streamlit Variables */
+    .block-container {
+        padding-top: 1.5rem !important; 
+    }
     
-    /* Tabs with Safety Yellow */
-    .stTabs [data-baseweb="tab-list"] {background: white; padding: 0.5rem; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);}
-    .stTabs [data-baseweb="tab"] {height: 50px; border-radius: 8px; color: #1E3A8A; font-weight: 600; padding: 0 1.5rem;}
-    .stTabs [aria-selected="true"] {background: #FFD700 !important; color: #1E3A8A !important;}
+    /* Headers - Uses theme text color but keeps safety yellow underline */
+    .main-header {
+        font-size: 2.5rem; 
+        font-weight: 800; 
+        color: var(--text-color); 
+        text-align: center; 
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+    }
     
-    /* Alerts */
-    .alert-danger {background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%); color: white; padding: 20px; border-radius: 12px;
-                    text-align: center; font-size: 1.3rem; font-weight: 700; animation: pulse 2s infinite; margin: 20px 0;
-                    box-shadow: 0 4px 6px rgba(239,68,68,0.3); border: 3px solid #FCA5A5;}
-    .alert-success {background: linear-gradient(135deg, #22C55E 0%, #16A34A 100%); color: white; padding: 20px; border-radius: 12px;
-                     text-align: center; font-size: 1.3rem; font-weight: 700; margin: 20px 0; box-shadow: 0 4px 6px rgba(34,197,94,0.3); border: 3px solid #86EFAC;}
+    .sub-header {
+        text-align: center; 
+        font-size: 1.1rem; 
+        color: var(--text-color); 
+        opacity: 0.8;
+        font-weight: 500; 
+        margin-bottom: 1.5rem;
+    }
+    
+    h2 {
+        color: var(--text-color) !important; 
+        font-weight: 700 !important; 
+        border-bottom: 3px solid #FFD700; 
+        padding-bottom: 0.5rem;
+    }
+    
+    /* Tabs - Adaptive Backgrounds */
+    .stTabs [data-baseweb="tab-list"] {
+        background: var(--secondary-background-color); 
+        padding: 0.5rem; 
+        border-radius: 10px; 
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 50px; 
+        border-radius: 8px; 
+        color: var(--text-color); 
+        font-weight: 600; 
+        padding: 0 1.5rem;
+    }
+    .stTabs [aria-selected="true"] {
+        background: #FFD700 !important; 
+        color: #1E3A8A !important; /* Keep text dark on yellow button */
+    }
+    
+    /* Alerts - Text forced to white because backgrounds are fixed gradients */
+    .alert-danger {
+        background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%); 
+        color: white; 
+        padding: 20px; 
+        border-radius: 12px;
+        text-align: center; 
+        font-size: 1.3rem; 
+        font-weight: 700; 
+        animation: pulse 2s infinite; 
+        margin: 20px 0;
+        box-shadow: 0 4px 6px rgba(239,68,68,0.3); 
+        border: 3px solid #FCA5A5;
+    }
+    .alert-success {
+        background: linear-gradient(135deg, #22C55E 0%, #16A34A 100%); 
+        color: white; 
+        padding: 20px; 
+        border-radius: 12px;
+        text-align: center; 
+        font-size: 1.3rem; 
+        font-weight: 700; 
+        margin: 20px 0; 
+        box-shadow: 0 4px 6px rgba(34,197,94,0.3); 
+        border: 3px solid #86EFAC;
+    }
     @keyframes pulse {0%, 100% {opacity: 1; transform: scale(1);} 50% {opacity: 0.85; transform: scale(1.02);}}
     
-    /* Headers */
-    h2 {color: #1E3A8A !important; font-weight: 700 !important; border-bottom: 3px solid #FFD700; padding-bottom: 0.5rem;}
-    
     /* Buttons */
-    .stButton > button {background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%); color: #1E3A8A; border-radius: 10px;
-                        padding: 0.6rem 2rem; font-weight: 700; box-shadow: 0 4px 6px rgba(0,0,0,0.1);}
-    .stButton > button:hover {transform: translateY(-2px); box-shadow: 0 6px 12px rgba(0,0,0,0.15);}
-    .stDownloadButton > button {background: linear-gradient(135deg, #1E3A8A 0%, #3B82F6 100%); color: white;}
+    .stButton > button {
+        background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%); 
+        color: #1E3A8A; /* Dark text on yellow button is always safe */
+        border: none;
+        border-radius: 10px;
+        padding: 0.6rem 2rem; 
+        font-weight: 700; 
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .stButton > button:hover {
+        transform: translateY(-2px); 
+        box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        color: #1E3A8A;
+    }
+    .stDownloadButton > button {
+        background: linear-gradient(135deg, #1E3A8A 0%, #3B82F6 100%); 
+        color: white;
+        border: none;
+    }
     
-    /* Metrics */
-    [data-testid="stMetricValue"] {font-size: 1.8rem !important; font-weight: 700 !important; color: #1E3A8A;}
-    [data-testid="metric-container"] {background: white; padding: 1rem; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-left: 4px solid #FFD700;}
+    /* Metrics - Adaptive Card */
+    [data-testid="stMetricValue"] {
+        font-size: 1.8rem !important; 
+        font-weight: 700 !important; 
+        color: var(--text-color);
+    }
+    [data-testid="metric-container"] {
+        background: var(--secondary-background-color); 
+        padding: 1rem; 
+        border-radius: 10px; 
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05); 
+        border-left: 4px solid #FFD700;
+    }
     
     /* File uploader */
-    [data-testid="stFileUploader"] {background: white; padding: 1.5rem; border-radius: 10px; border: 2px dashed #FFD700;}
+    [data-testid="stFileUploader"] {
+        background: var(--secondary-background-color); 
+        padding: 1.5rem; 
+        border-radius: 10px; 
+        border: 2px dashed #FFD700;
+    }
     
     audio {display: none;}
-    .info-box {background: linear-gradient(135deg, #DBEAFE 0%, #BFDBFE 100%); padding: 1rem; border-radius: 10px; border-left: 4px solid #1E3A8A; margin: 1rem 0;}
+    
+    /* Info Box - Uses transparency to blend in both modes */
+    .info-box {
+        background: rgba(59, 130, 246, 0.1); /* Transparent Blue */
+        padding: 1rem; 
+        border-radius: 10px; 
+        border-left: 4px solid #1E3A8A; 
+        margin: 1rem 0;
+        color: var(--text-color);
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -504,15 +600,14 @@ with tab3:
         st.markdown("### 🎥 Webcam Inactive")
         st.info("👆 Click 'START WEBCAM' button above to begin real-time detection")
         
-        # Show placeholder
+        # Show placeholder - Adaptive Border
         st.markdown("""
-        <div style="background: #E5E7EB; padding: 100px; border-radius: 15px; text-align: center; border: 3px dashed #FFD700;">
-            <h2 style="color: #6B7280;">📷 Webcam Feed Will Appear Here</h2>
-            <p style="color: #9CA3AF;">Press START to enable live detection with bounding boxes</p>
+        <div style="background: var(--secondary-background-color); padding: 100px; border-radius: 15px; text-align: center; border: 3px dashed #FFD700;">
+            <h2 style="color: var(--text-color); opacity: 0.5;">📷 Webcam Feed Will Appear Here</h2>
+            <p style="color: var(--text-color); opacity: 0.5;">Press START to enable live detection with bounding boxes</p>
         </div>
         """, unsafe_allow_html=True)
 
 st.markdown("---")
 
 st.caption("🚀 CSC738 | Helmet Safety Detection | © 2025")
-
