@@ -1,7 +1,0 @@
-roboflow==1.0.0
-streamlit
-ultralytics
-opencv-python
-numpy
-Pillow==10.2.0
-pandas==2.1.4
