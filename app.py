@@ -309,7 +309,7 @@ if not model:
 # MAIN APP UI
 # ============================================================
 st.markdown('<h1 class="main-header">🛵 HelmetNet </h1>', unsafe_allow_html=True)
-st.markdown('<p class="sub-header">AI Helmet Detection System<</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-header">AI Helmet Detection System</p>', unsafe_allow_html=True)
 
 tab1, tab2, tab3 = st.tabs(["Image Detection", "Video Detection", "Real-Time Detection"])
 
@@ -476,6 +476,7 @@ with tab3:
 
 st.markdown("---")
 st.caption("🚀 HelmetNet App | © 2025")
+
 
 
 
