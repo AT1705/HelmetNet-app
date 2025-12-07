@@ -169,7 +169,6 @@ st.markdown("""
 NO_HELMET_LABELS = ["no helmet", "no_helmet", "no-helmet"]
 CONFIDENCE_THRESHOLD = 0.25
 FRAME_SKIP = 3  # Optimization from app_2.py
-DEFAULT_MODEL_PATH = "best.pt"
 
 # ============================================================
 # UTILS & LOGIC (FROM APP_2.PY)
@@ -181,7 +180,7 @@ def load_model(model_source):
             model = YOLO(model_source)
             return model
         elif isinstance(model_source, str):
-            # Fallback
+            # Fallback or initial load
             return YOLO("yolov8n.pt")
         else:
             # Handle direct file object if passed
@@ -288,17 +287,7 @@ with st.sidebar:
     st.markdown("---")
     
     st.markdown("**🤖 Model Settings**")
-    
-    # Logic from app_2: File uploader for custom model, defaulting to best.pt
-    model_file = st.file_uploader("Upload Model (.pt)", type=['pt'], label_visibility="collapsed")
-    
-    if model_file:
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.pt') as f:
-            f.write(model_file.read())
-            model_path = f.name
-        st.success("✅ Custom model loaded")
-    else:
-        model_path = st.text_input("Model Path", DEFAULT_MODEL_PATH)
+    st.text_input("Model Path", "best.pt")
 
     confidence_threshold = st.slider("🎯 Confidence", 0.1, 1.0, CONFIDENCE_THRESHOLD, 0.05)
     
@@ -312,9 +301,9 @@ with st.sidebar:
     st.caption("🚀 CSC738 Project")
 
 # LOAD MODEL
-model = load_model(model_path)
+model = load_model("best.pt")
 if not model:
-    st.sidebar.warning(f"⚠️ Could not load {model_path}, using default YOLOv8n")
+    st.sidebar.warning("⚠️ Using default YOLOv8n")
     model = YOLO("yolov8n.pt")
 
 # ============================================================
