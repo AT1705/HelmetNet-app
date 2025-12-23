@@ -203,7 +203,7 @@ def draw_boxes(frame, detections):
     for det in detections:
         x1, y1, x2, y2 = map(int, det['bbox'])
         # Red for no helmet, Green for helmet
-        color = (0, 0, 255) if det['class'] in NO_HELMET_LABELS else (0, 255, 0)
+        color = (0, 0, 139) if det['class'] in NO_HELMET_LABELS else (0, 100, 0)
         label = f"{det['class']} {det['confidence']:.2f}"
         
         # Draw Rectangle
@@ -476,6 +476,7 @@ with tab3:
 
 st.markdown("---")
 st.caption("🚀 HelmetNet App | © 2025")
+
 
 
 
