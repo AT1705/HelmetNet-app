@@ -147,9 +147,9 @@ st.markdown("""
 # CONFIGURATION
 # ============================================================
 NO_HELMET_LABELS = ["no helmet", "no_helmet", "no-helmet"]
-CONFIDENCE_THRESHOLD = 0.25
+CONFIDENCE_THRESHOLD = 0.75
 FRAME_SKIP = 3
-DEFAULT_MODEL_PATH = "helmetYoloV8_100epochs.pt"
+DEFAULT_MODEL_PATH = "best.pt"
 
 # ============================================================
 # UTILS & LOGIC
@@ -465,6 +465,7 @@ with tab3:
 
 st.markdown("---")
 st.caption("🚀 HelmetNet App | © 2025")
+
 
 
 
