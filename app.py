@@ -14,6 +14,29 @@ import os
 from datetime import timedelta
 from streamlit_webrtc import VideoTransformerBase, webrtc_streamer, WebRtcMode, RTCConfiguration
 
+RTC_CONFIGURATION = RTCConfiguration(
+    {
+        "iceServers": [
+            {"urls": ["stun:stun.l.google.com:19302"]},
+            {
+                "urls": [os.environ.get("TURN_URL_TLS")],
+                "username": os.environ.get("TURN_USERNAME"),
+                "credential": os.environ.get("TURN_PASSWORD"),
+            },
+            {
+                "urls": [os.environ.get("TURN_URL_TCP")],
+                "username": os.environ.get("TURN_USERNAME"),
+                "credential": os.environ.get("TURN_PASSWORD"),
+            },
+            {
+                "urls": [os.environ.get("TURN_URL_UDP")],
+                "username": os.environ.get("TURN_USERNAME"),
+                "credential": os.environ.get("TURN_PASSWORD"),
+            },
+        ]
+    }
+)
+
 # ============================================================
 # PAGE CONFIG
 # ============================================================
@@ -296,6 +319,12 @@ with st.sidebar:
     if 'total_detections' not in st.session_state:
         st.session_state.total_detections = 0
     st.metric("Total Detections", st.session_state.total_detections)
+
+    # for debug
+    st.sidebar.write("TURN_URL_TLS:", bool(os.environ.get("TURN_URL_TLS")))
+    st.sidebar.write("TURN_USERNAME:", bool(os.environ.get("TURN_USERNAME")))
+    st.sidebar.write("TURN_PASSWORD:", bool(os.environ.get("TURN_PASSWORD")))
+
     
     st.markdown("---")
 
@@ -459,7 +488,7 @@ with tab3:
     ctx = webrtc_streamer(
         key="helmet-live",
         mode=WebRtcMode.SENDRECV,
-        rtc_configuration=RTCConfiguration({"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}),
+        rtc_configuration=RTC_CONFIGURATION,
         video_processor_factory=HelmetTransformer,
         async_processing=True,
     )
@@ -482,6 +511,7 @@ with tab3:
 
 st.markdown("---")
 st.caption("🚀 HelmetNet App | © 2025")
+
 
 
 
