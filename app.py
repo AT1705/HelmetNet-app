@@ -149,7 +149,7 @@ st.markdown("""
 NO_HELMET_LABELS = ["no helmet", "no_helmet", "no-helmet"]
 CONFIDENCE_THRESHOLD = 0.25
 FRAME_SKIP = 3
-DEFAULT_MODEL_PATH = "best.pt"
+DEFAULT_MODEL_PATH = "bestv2.pt"
 
 # ============================================================
 # UTILS & LOGIC
@@ -465,3 +465,4 @@ with tab3:
 
 st.markdown("---")
 st.caption("🚀 HelmetNet App | © 2025")
+
