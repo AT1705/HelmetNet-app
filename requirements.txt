@@ -6,3 +6,5 @@ Pillow
 av
 streamlit-webrtc
 python-dotenv
+twilio
+
