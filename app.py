@@ -333,7 +333,6 @@ with st.sidebar:
 #    st.sidebar.warning(f"⚠️ Could not load {model_path}, using default YOLOv8n")
 #    model = YOLO("yolov8n.pt")
 
-model_path = st.text_input("Model Path", DEFAULT_MODEL_PATH)
 model = load_model(model_path)
 if not model:
     st.sidebar.warning(f"⚠️ Could not load {model_path}, using default YOLOv8n")
@@ -510,6 +509,7 @@ with tab3:
 
 st.markdown("---")
 st.caption("🚀 HelmetNet App | © 2025")
+
 
 
 
