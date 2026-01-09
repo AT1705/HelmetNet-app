@@ -313,18 +313,17 @@ with st.sidebar:
     st.text_input("Model Path", DEFAULT_MODEL_PATH)
 
     confidence_threshold = st.slider("🎯 Confidence", 0.1, 1.0, CONFIDENCE_THRESHOLD, 0.05)
+
+        # for debug
+    st.sidebar.write("TURN_URL_TLS:", bool(os.environ.get("TURN_URL_TLS")))
+    st.sidebar.write("TURN_USERNAME:", bool(os.environ.get("TURN_USERNAME")))
+    st.sidebar.write("TURN_PASSWORD:", bool(os.environ.get("TURN_PASSWORD")))
     
     st.markdown("---")
     st.markdown("**📊 Session Stats**")
     if 'total_detections' not in st.session_state:
         st.session_state.total_detections = 0
     st.metric("Total Detections", st.session_state.total_detections)
-
-    # for debug
-    st.sidebar.write("TURN_URL_TLS:", bool(os.environ.get("TURN_URL_TLS")))
-    st.sidebar.write("TURN_USERNAME:", bool(os.environ.get("TURN_USERNAME")))
-    st.sidebar.write("TURN_PASSWORD:", bool(os.environ.get("TURN_PASSWORD")))
-
     
     st.markdown("---")
 
@@ -511,6 +510,7 @@ with tab3:
 
 st.markdown("---")
 st.caption("🚀 HelmetNet App | © 2025")
+
 
 
 
