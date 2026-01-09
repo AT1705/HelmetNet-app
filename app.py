@@ -310,7 +310,7 @@ with st.sidebar:
     
     st.markdown("**🤖 Model Settings**")
     
-    st.text_input("Model Path", DEFAULT_MODEL_PATH)
+    model_path = st.text_input("Model Path", DEFAULT_MODEL_PATH)
 
     confidence_threshold = st.slider("🎯 Confidence", 0.1, 1.0, CONFIDENCE_THRESHOLD, 0.05)
 
@@ -332,7 +332,6 @@ with st.sidebar:
 #if not model:
 #    st.sidebar.warning(f"⚠️ Could not load {model_path}, using default YOLOv8n")
 #    model = YOLO("yolov8n.pt")
-
 model = load_model(model_path)
 if not model:
     st.sidebar.warning(f"⚠️ Could not load {model_path}, using default YOLOv8n")
@@ -509,6 +508,7 @@ with tab3:
 
 st.markdown("---")
 st.caption("🚀 HelmetNet App | © 2025")
+
 
 
 
