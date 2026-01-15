@@ -1,4 +1,5 @@
 import streamlit as st
+import textwrap
 
 # ============================================================
 # PAGE CONFIG (Landing page hides sidebar initially)
@@ -261,4 +262,5 @@ with c2:
     if st.button("Start Demo", use_container_width=True):
         st.switch_page("pages/2_Detection.py")
     st.markdown("</div>", unsafe_allow_html=True)
+
 
