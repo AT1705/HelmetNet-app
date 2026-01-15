@@ -182,7 +182,7 @@ header { visibility: hidden; }
 </style>
 """
 
-st.markdown(GOV_CSS_LANDING, unsafe_allow_html=True)
+st.markdown(textwrap.dedent(hero_html), unsafe_allow_html=True)
 
 hero_html = """
 <div class="hn-hero">
@@ -262,5 +262,6 @@ with c2:
     if st.button("Start Demo", use_container_width=True):
         st.switch_page("pages/2_Detection.py")
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
