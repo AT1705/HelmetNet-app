@@ -332,16 +332,17 @@ st.write("")
 cta1, cta2, cta3 = st.columns([1, 1, 2], gap="small")
 
 with cta1:
-    st.markdown('<div class="hn-btn-primary">', unsafe_allow_html=True)
-    if st.button("Start Demo", use_container_width=True):
-        nav_to("pages/2_Detection.py", current_page="app.py")
-    st.markdown("</div>", unsafe_allow_html=True)
-
-with cta2:
     st.markdown('<div class="hn-btn-secondary">', unsafe_allow_html=True)
     if st.button("About HelmetNet", use_container_width=True):
         nav_to("pages/1_About_HelmetNet.py", current_page="app.py")
     st.markdown("</div>", unsafe_allow_html=True)
+
+with cta2:
+     st.markdown('<div class="hn-btn-primary">', unsafe_allow_html=True)
+    if st.button("Start Demo", use_container_width=True):
+        nav_to("pages/2_Detection.py", current_page="app.py")
+    st.markdown("</div>", unsafe_allow_html=True)
+
 
 with cta3:
     # Optional: micro trust line like in your sample (customers trust…)
@@ -354,3 +355,4 @@ with cta3:
 
 st.write("")
 st.caption("HelmetNet (CSC738) · Landing Page · © 2025–2026")
+
