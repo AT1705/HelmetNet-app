@@ -183,11 +183,7 @@ header { visibility: hidden; }
 
 st.markdown(GOV_CSS_LANDING, unsafe_allow_html=True)
 
-# ============================================================
-# HERO SECTION
-# ============================================================
-st.markdown(
-    """
+hero_html = """
 <div class="hn-hero">
   <div class="hn-topbar">
     <div class="hn-brand">
@@ -241,26 +237,17 @@ st.markdown(
 
     <div class="hn-panel">
       <h3>Portal Actions</h3>
-      <div style="display:grid; gap: 10px; margin-top: 8px;">
-        <div class="hn-btn-secondary">
-        </div>
-        <div class="hn-btn-primary">
-        </div>
-      </div>
-      <div style="margin-top: 12px; font-size: 0.90rem; color: rgba(11,18,32,0.78); line-height: 1.55;">
-        <strong>Note:</strong> This is an academic demonstration. Deployment in operational enforcement contexts
-        should include governance, privacy impact assessment, and audit logging.
+      <div style="margin-top: 10px; color: rgba(11,18,32,0.78); font-size: 0.90rem; line-height: 1.55;">
+        Use the buttons below to proceed.
       </div>
     </div>
   </div>
 </div>
-""",
-    unsafe_allow_html=True,
-)
+"""
 
-# ============================================================
-# ACTION BUTTONS (Use switch_page)
-# ============================================================
+st.markdown(textwrap.dedent(hero_html), unsafe_allow_html=True)
+
+# Buttons rendered normally (not inside HTML)
 c1, c2 = st.columns([1, 1], gap="medium")
 
 with c1:
@@ -275,4 +262,3 @@ with c2:
         st.switch_page("pages/2_Detection.py")
     st.markdown("</div>", unsafe_allow_html=True)
 
-st.caption("HelmetNet (CSC738) · JPJ-inspired UI/UX redesign · © 2025–2026")
