@@ -338,7 +338,7 @@ with cta1:
     st.markdown("</div>", unsafe_allow_html=True)
 
 with cta2:
-     st.markdown('<div class="hn-btn-primary">', unsafe_allow_html=True)
+    st.markdown('<div class="hn-btn-primary">', unsafe_allow_html=True)
     if st.button("Start Demo", use_container_width=True):
         nav_to("pages/2_Detection.py", current_page="app.py")
     st.markdown("</div>", unsafe_allow_html=True)
@@ -354,5 +354,6 @@ with cta3:
 
 st.write("")
 st.caption("HelmetNet (CSC738) · Landing Page · © 2025–2026")
+
 
 
