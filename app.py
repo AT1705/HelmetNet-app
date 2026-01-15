@@ -343,7 +343,6 @@ with cta2:
         nav_to("pages/2_Detection.py", current_page="app.py")
     st.markdown("</div>", unsafe_allow_html=True)
 
-
 with cta3:
     # Optional: micro trust line like in your sample (customers trust…)
     st.markdown(
@@ -355,4 +354,5 @@ with cta3:
 
 st.write("")
 st.caption("HelmetNet (CSC738) · Landing Page · © 2025–2026")
+
 
