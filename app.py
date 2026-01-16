@@ -320,22 +320,113 @@ def _badge_html(label: str) -> str:
 
 def render_detection_table(detections: list[dict], model_name: str) -> None:
     """
-    Force-rendered via components.html so it will never show raw HTML as text.
+    Pretty results card + table. Uses components.html, so we inline CSS (components are isolated).
     """
+    # ----- inline CSS for the component frame -----
+    css = """
+    <style>
+      :root { --border:#e2e8f0; --muted:#64748b; --text:#0f172a; --bg:#ffffff; }
+      body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; color:var(--text); background:transparent; }
+      .card{
+        background:var(--bg);
+        border:1px solid var(--border);
+        border-radius:16px;
+        box-shadow:0 12px 30px rgba(15,23,42,.08);
+        overflow:hidden;
+      }
+      .head{
+        padding:16px 18px;
+        border-bottom:1px solid var(--border);
+        display:flex; align-items:flex-start; justify-content:space-between; gap:12px;
+      }
+      .title{ font-weight:900; font-size:18px; line-height:1.15; }
+      .sub{ margin-top:4px; color:var(--muted); font-size:13px; font-weight:600; }
+      .pill{
+        margin-top:2px;
+        padding:8px 12px;
+        border-radius:999px;
+        border:1px solid var(--border);
+        background:#f8fafc;
+        font-weight:900;
+        font-size:13px;
+        color:#334155;
+        white-space:nowrap;
+      }
+      .section{
+        padding:14px 18px;
+        display:flex; align-items:center; justify-content:space-between; gap:12px;
+      }
+      .section .left{ font-weight:900; font-size:16px; }
+      .section .right{ color:var(--muted); font-weight:800; font-size:13px; }
+
+      .wrap{ overflow:auto; }
+      table{ width:100%; border-collapse:collapse; min-width:820px; background:#fff; }
+      thead th{
+        text-align:left;
+        padding:12px 14px;
+        font-size:12px;
+        letter-spacing:.02em;
+        color:#475569;
+        font-weight:900;
+        background:#f8fafc;
+        border-top:1px solid #eef2f7;
+        border-bottom:1px solid #eef2f7;
+      }
+      tbody td{
+        padding:12px 14px;
+        border-bottom:1px solid #eef2f7;
+        font-size:14px;
+        vertical-align:middle;
+      }
+      tbody tr:nth-child(odd){ background:#ffffff; }
+      tbody tr:nth-child(even){ background:#fbfdff; }
+
+      .num{ color:#475569; width:46px; }
+      .label{ font-weight:900; }
+      .bbox{ color:#475569; font-variant-numeric: tabular-nums; }
+      .ok{
+        display:inline-flex; align-items:center; justify-content:center;
+        padding:6px 12px; border-radius:999px;
+        background:#dcfce7; color:#14532d; font-weight:900; font-size:13px;
+        border:1px solid #86efac;
+      }
+      .bad{
+        display:inline-flex; align-items:center; justify-content:center;
+        padding:6px 12px; border-radius:999px;
+        background:#fee2e2; color:#991b1b; font-weight:900; font-size:13px;
+        border:1px solid #fca5a5;
+      }
+      .foot{
+        padding:12px 18px;
+        border-top:1px solid var(--border);
+        color:var(--muted);
+        font-size:13px;
+        font-weight:600;
+        background:#ffffff;
+      }
+    </style>
+    """
+
+    def badge_html(label: str) -> str:
+        lab = (label or "").lower()
+        non = lab in NO_HELMET_LABELS or lab.replace("_", "-") in NO_HELMET_LABELS
+        return '<span class="bad">Non-compliant</span>' if non else '<span class="ok">Compliant</span>'
+
     if not detections:
         html = f"""
-        <div class="hn-card">
-          <div class="hn-card-h">
+        {css}
+        <div class="card">
+          <div class="head">
             <div>
-              Results
-              <div class="hn-sub">No detections found.</div>
+              <div class="title">Results</div>
+              <div class="sub">No detections found.</div>
             </div>
-            <div class="hn-pill">Model: {model_name}</div>
+            <div class="pill">Model: {model_name}</div>
           </div>
-          <div class="hn-foot">Tip: Try a clearer image for better detection.</div>
+          <div class="foot">Tip: Try a clearer image for better detection.</div>
         </div>
         """
-        components.html(html, height=190, scrolling=False)
+        components.html(html, height=200, scrolling=False)
         return
 
     dets = sorted(detections, key=lambda d: float(d.get("confidence", 0.0)), reverse=True)
@@ -356,57 +447,57 @@ def render_detection_table(detections: list[dict], model_name: str) -> None:
         rows.append(
             f"""
             <tr>
-              <td style="color:#475569; width:52px;">{i}</td>
-              <td style="font-weight:800; color:#0f172a;">{label}</td>
-              <td style="color:#0f172a;">{conf*100:.1f}%</td>
-              <td>{_badge_html(label)}</td>
-              <td style="color:#475569;">{x1}, {y1}, {w}, {h}</td>
+              <td class="num">{i}</td>
+              <td class="label">{label}</td>
+              <td>{conf*100:.1f}%</td>
+              <td>{badge_html(label)}</td>
+              <td class="bbox">{x1}, {y1}, {w}, {h}</td>
             </tr>
             """
         )
 
+    # height: more rows -> taller
+    height = 520 if len(rows) <= 6 else 620
+
     html = f"""
-    <div class="hn-card">
-      <div class="hn-card-h">
+    {css}
+    <div class="card">
+      <div class="head">
         <div>
-          Results
-          <div class="hn-sub">Populated from YOLO outputs (label, confidence, bbox).</div>
+          <div class="title">Results</div>
+          <div class="sub">Populated from YOLO outputs (label, confidence, bbox).</div>
         </div>
-        <div class="hn-pill">Model: {model_name}</div>
+        <div class="pill">Model: {model_name}</div>
       </div>
 
-      <div>
-        <div style="padding: 14px 18px; display:flex; align-items:center; justify-content:space-between;">
-          <div style="font-weight:900; color:#0f172a;">Detections Table</div>
-          <div style="font-size:0.85rem; color:#64748b; font-weight:700;">Sorted by confidence</div>
-        </div>
+      <div class="section">
+        <div class="left">Detections Table</div>
+        <div class="right">Sorted by confidence</div>
+      </div>
 
-        <div class="hn-table-wrap">
-          <table class="hn-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>LABEL</th>
-                <th>CONFIDENCE</th>
-                <th>COMPLIANCE</th>
-                <th>BBOX (X,Y,W,H)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {''.join(rows)}
-            </tbody>
-          </table>
-        </div>
+      <div class="wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:56px;">#</th>
+              <th>LABEL</th>
+              <th>CONFIDENCE</th>
+              <th>COMPLIANCE</th>
+              <th>BBOX (X,Y,W,H)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {''.join(rows)}
+          </tbody>
+        </table>
+      </div>
 
-        <div class="hn-foot">
-          Tip: For your final demo, add “export report” (model version, threshold, timestamp, detections).
-        </div>
+      <div class="foot">
+        Tip: For your final demo, add “export report” (model version, threshold, timestamp, detections).
       </div>
     </div>
     """
-
-    # Height: adjust if you expect many rows
-    components.html(html, height=520, scrolling=True)
+    components.html(html, height=height, scrolling=True)
 
 # ============================================================
 # WEBRTC CLASS
