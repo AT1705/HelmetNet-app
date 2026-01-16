@@ -276,25 +276,54 @@ def inject_demo_css():
     st.markdown(
         """
         <style>
-          .hn-section-title{
-            font-size: 0.95rem;
-            font-weight: 800;
-            color: #0f172a;
-            margin: 0.25rem 0 0.35rem 0;
+          /* Full-bleed, but with a centered container */
+          [data-testid="stMainBlockContainer"] { padding: 0 !important; max-width: 100% !important; }
+          body { background: #f8fafc; }
+
+          /* Spacer for fixed nav */
+          .hn-topspacer { height: 64px; }
+
+          /* Container + cards */
+          .hn-wrap { max-width: 80rem; margin: 0 auto; padding: 2rem 1rem; }
+          .hn-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 0.75rem; box-shadow: 0 8px 16px rgba(15,23,42,0.08); overflow: hidden; }
+          .hn-card-h { padding: 1rem 1.25rem; border-bottom: 1px solid #e2e8f0; font-weight: 800; color: #0f172a; }
+          .hn-card-b { padding: 1.25rem; }
+
+          /* Reduce Streamlit label clutter */
+          label { font-weight: 700 !important; color: #334155 !important; }
+          .stSlider label, .stSelectbox label { font-size: 0.85rem !important; }
+
+          /* Reduce default vertical gaps */
+          div[data-testid="stVerticalBlock"] > div { gap: 0.85rem !important; }
+
+          /* Buttons */
+          .stButton > button {
+            background: #f59e0b !important;
+            color: #0f172a !important;
+            border: none !important;
+            border-radius: 0.75rem !important;
+            font-weight: 800 !important;
+            padding: 0.85rem 1rem !important;
           }
-          .hn-divider{
-            height: 1px;
-            background: #e2e8f0;
-            margin: 1rem 0;
+          .stButton > button:hover { background: #fbbf24 !important; transform: translateY(-1px); }
+
+          /* Tabs */
+          .stTabs [data-baseweb="tab-list"] {
+            background: #ffffff;
+            padding: 0.4rem;
+            border-radius: 0.9rem;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 6px 14px rgba(15,23,42,0.06);
           }
-    
-          /* Ensure widgets don't "escape" the card visually */
-          .hn-card-b > div { margin-bottom: 0.65rem; }
+          .stTabs [data-baseweb="tab"] { height: 48px; border-radius: 0.75rem; font-weight: 750; }
+          .stTabs [aria-selected="true"] { background: #f59e0b !important; color: #0f172a !important; }
+
+          /* Uploader */
+          [data-testid="stFileUploader"] { background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 0.75rem; padding: 1rem; }
         </style>
         """,
         unsafe_allow_html=True,
     )
-
 
 
 def render_demo_nav():
