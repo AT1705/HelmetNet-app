@@ -1,5 +1,3 @@
-The zip file are my GitHub folder where i deploy the streamlit application. I use app.py to render the index.html file. The html file is inside the pages model. Please understand the html file content. and as you can see in the html we have 3 page: Home, About, Start Demo page. Now I want to integrate my pt model inside this start demo page. Previously i build only streamlit with html rendering. I already have the functionality. Can you please extract all functionality regarding the image, video and real time detection as well the configuration setting and twilio setup as well basically all from below code to the integrate with the index html file. to make the start demo page actually functioning and run the detection model. Suggest the best way to make this happen. Basically i want you to take the functionally from below code to put into the start demo page since now the start demo page is only static and mockup like page. now we want to make this page working.
-The python code:
 """
 AI Helmet Detection System (CSC738)
 OPTIMIZED: Live Inference + Frame Skipping + Modern Safety Theme UI
