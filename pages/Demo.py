@@ -23,11 +23,10 @@ from streamlit_webrtc import VideoTransformerBase, webrtc_streamer, WebRtcMode, 
 # ============================================================
 st.set_page_config(
     page_title="Demo | HelmetNet",
-    page_icon="🛵",
+    page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
-
 # ============================================================
 # ICONS (Optional, you provide from Flaticon)
 # Place files in: assets/icons/
