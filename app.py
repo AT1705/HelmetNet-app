@@ -5,21 +5,27 @@ OPTIMIZED: Live Inference + Frame Skipping + Modern Safety Theme UI
 UPDATED:
 - Reliable WebRTC on hotspots using Twilio Network Traversal (TURN) tokens
 - Use Streamlit Secrets (st.secrets) instead of os.environ
-- Fix model_path input + loading
+- Model dropdown from ./models/*.pt
+- Fancy detections table shown under Image Detection (after Run)
 """
 
-import streamlit as st
-from ultralytics import YOLO
-import cv2
-import numpy as np
-from pathlib import Path
+from __future__ import annotations
+
 import tempfile
 import time
-from streamlit_webrtc import VideoTransformerBase, webrtc_streamer, WebRtcMode, RTCConfiguration
 from pathlib import Path
 
-# NEW: Twilio client for TURN credentials (ephemeral)
+import cv2
+import numpy as np
+import streamlit as st
 from twilio.rest import Client
+from ultralytics import YOLO
+from streamlit_webrtc import (
+    VideoTransformerBase,
+    webrtc_streamer,
+    WebRtcMode,
+    RTCConfiguration,
+)
 
 # ============================================================
 # PAGE CONFIG
@@ -28,7 +34,7 @@ st.set_page_config(
     page_title="AI Helmet Detection",
     page_icon="🛵",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
 # ============================================================
@@ -48,14 +54,11 @@ def get_twilio_ice_servers():
         token = client.tokens.create()  # returns ephemeral TURN creds
         ice_servers = token.ice_servers
 
-        # Safety: ensure list exists
         if not ice_servers:
-            # fallback to STUN only
             return [{"urls": ["stun:stun.l.google.com:19302"]}]
 
         return ice_servers
     except Exception as e:
-        # If Twilio fails, fallback to STUN only (may fail on hotspots)
         st.sidebar.error(f"TURN setup error: {e}")
         return [{"urls": ["stun:stun.l.google.com:19302"]}]
 
@@ -64,9 +67,10 @@ ICE_SERVERS = get_twilio_ice_servers()
 RTC_CONFIGURATION = RTCConfiguration({"iceServers": ICE_SERVERS})
 
 # ============================================================
-# SAFETY THEME CSS
+# SAFETY THEME CSS + TABLE STYLES
 # ============================================================
-st.markdown("""
+st.markdown(
+    """
 <style>
     .block-container { padding-top: 1.5rem !important; }
     .main-header {
@@ -113,6 +117,7 @@ st.markdown("""
         color: #1E3A8A; border: none; border-radius: 10px;
         padding: 0.6rem 2rem; font-weight: 700;
         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        width: 100%;
     }
     .stButton > button:hover {
         transform: translateY(-2px);
@@ -141,22 +146,107 @@ st.markdown("""
         border-radius: 10px; border-left: 4px solid #1E3A8A;
         margin: 1rem 0; color: var(--text-color);
     }
+
+    /* Fancy result table styles */
+    .hn-card {
+        background: white;
+        border: 1px solid rgba(226,232,240,1);
+        border-radius: 14px;
+        box-shadow: 0 10px 24px rgba(15,23,42,0.06);
+        overflow: hidden;
+        margin-top: 1rem;
+    }
+    .hn-card-h {
+        padding: 14px 18px;
+        border-bottom: 1px solid rgba(226,232,240,1);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        font-weight: 800;
+    }
+    .hn-pill {
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(226,232,240,1);
+        background: rgba(248,250,252,1);
+        font-weight: 800;
+        font-size: 0.85rem;
+        color: #334155;
+        white-space: nowrap;
+    }
+    .hn-card-b { padding: 0; }
+    .hn-sub {
+        font-weight: 500;
+        font-size: 0.9rem;
+        color: #64748b;
+        margin-top: 2px;
+    }
+    .hn-table-wrap { overflow-x: auto; }
+    .hn-table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 760px;
+    }
+    .hn-table thead th {
+        text-align: left;
+        padding: 12px;
+        font-size: 0.8rem;
+        color: #475569;
+        font-weight: 900;
+        border-top: 1px solid #eef2f7;
+        border-bottom: 1px solid #eef2f7;
+        background: white;
+    }
+    .hn-table tbody td {
+        padding: 14px 12px;
+        border-top: 1px solid #eef2f7;
+        vertical-align: middle;
+        font-variant-numeric: tabular-nums;
+    }
+    .hn-badge-ok {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: #dcfce7;
+        color: #14532d;
+        font-weight: 800;
+        font-size: 0.85rem;
+        border: 1px solid #86efac;
+    }
+    .hn-badge-bad {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: #fee2e2;
+        color: #991b1b;
+        font-weight: 800;
+        font-size: 0.85rem;
+        border: 1px solid #fca5a5;
+    }
+    .hn-foot {
+        padding: 12px 18px;
+        border-top: 1px solid #eef2f7;
+        color: #64748b;
+        font-size: 0.9rem;
+    }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 # ============================================================
 # CONFIGURATION
 # ============================================================
-NO_HELMET_LABELS = ["no helmet", "no_helmet", "no-helmet"]
+NO_HELMET_LABELS = ["no helmet", "no_helmet", "no-helmet", "nohelmet"]
 CONFIDENCE_THRESHOLD = 0.50
 FRAME_SKIP = 3
 MODELS_DIR = Path("models")
-
-DEFAULT_MODEL_PATH = "model_1.pt"   # filename only
-
-model_files = sorted([p.name for p in MODELS_DIR.glob("*.pt")])
-default_index = model_files.index(DEFAULT_MODEL_PATH) if DEFAULT_MODEL_PATH in model_files else 0
-model_choice = st.selectbox("Select Model", model_files, index=default_index)
+DEFAULT_MODEL_PATH = "model_1.pt"  # filename only
 
 # ============================================================
 # UTILS & LOGIC
@@ -174,27 +264,27 @@ def load_model(model_file: str):
             st.sidebar.success(f"✅ Model loaded: {model_file}")
             return model
 
-        # fallback (if file missing)
         st.sidebar.warning("⚠️ Model not found in ./models, using YOLOv8n")
         return YOLO("yolov8n.pt")
-
     except Exception as e:
         st.sidebar.error(f"Model load error: {e}")
         return None
 
+
 def play_alarm():
-    if 'last_alarm' not in st.session_state:
+    if "last_alarm" not in st.session_state:
         st.session_state.last_alarm = 0
     if time.time() - st.session_state.last_alarm > 3:
         if Path("alert.mp3").exists():
             st.audio("alert.mp3", format="audio/mp3", autoplay=True)
         st.session_state.last_alarm = time.time()
 
+
 def draw_boxes(frame, detections):
     img = frame.copy()
     for det in detections:
-        x1, y1, x2, y2 = map(int, det['bbox'])
-        color = (0, 0, 139) if det['class'] in NO_HELMET_LABELS else (0, 100, 0)
+        x1, y1, x2, y2 = map(int, det["bbox"])
+        color = (0, 0, 139) if det["class"] in NO_HELMET_LABELS else (0, 100, 0)
         label = f"{det['class']} {det['confidence']:.2f}"
 
         cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
@@ -203,8 +293,9 @@ def draw_boxes(frame, detections):
         cv2.putText(img, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
     return img
 
+
 def detect_frame(frame, model, conf_threshold):
-    results = model.predict(frame, conf=conf_threshold, imgsz=640, verbose=False, device='cpu')
+    results = model.predict(frame, conf=conf_threshold, imgsz=640, verbose=False, device="cpu")
 
     helmet_count = 0
     no_helmet_count = 0
@@ -212,11 +303,11 @@ def detect_frame(frame, model, conf_threshold):
 
     for box in results[0].boxes:
         cls_id = int(box.cls)
-        cls_name = model.names[cls_id].lower()
+        cls_name = str(model.names[cls_id]).lower()
         conf = float(box.conf)
         bbox = box.xyxy[0].cpu().numpy().tolist()
 
-        detections.append({'class': cls_name, 'confidence': conf, 'bbox': bbox})
+        detections.append({"class": cls_name, "confidence": conf, "bbox": bbox})
 
         if cls_name in NO_HELMET_LABELS:
             no_helmet_count += 1
@@ -224,10 +315,109 @@ def detect_frame(frame, model, conf_threshold):
             helmet_count += 1
 
     return detections, {
-        'helmet_count': helmet_count,
-        'no_helmet_count': no_helmet_count,
-        'alert': no_helmet_count > 0
+        "helmet_count": helmet_count,
+        "no_helmet_count": no_helmet_count,
+        "alert": no_helmet_count > 0,
     }
+
+
+def _badge_html(label: str) -> str:
+    lab = (label or "").lower()
+    non = lab in NO_HELMET_LABELS or lab.replace("_", "-") in NO_HELMET_LABELS
+    if non:
+        return '<span class="hn-badge-bad">Non-compliant</span>'
+    return '<span class="hn-badge-ok">Compliant</span>'
+
+
+def render_detection_table(detections: list[dict], model_name: str) -> None:
+    if not detections:
+        st.markdown(
+            f"""
+            <div class="hn-card">
+              <div class="hn-card-h">
+                <div>
+                  Results
+                  <div class="hn-sub">No detections found.</div>
+                </div>
+                <div class="hn-pill">Model: {model_name}</div>
+              </div>
+              <div class="hn-foot">Tip: Try a clearer image for better detection.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        return
+
+    dets = sorted(detections, key=lambda d: float(d.get("confidence", 0.0)), reverse=True)
+
+    rows = []
+    for i, det in enumerate(dets, start=1):
+        label = str(det.get("class", ""))
+        conf = float(det.get("confidence", 0.0))
+        bbox = det.get("bbox", [0, 0, 0, 0])
+
+        # xyxy -> x,y,w,h
+        try:
+            x1, y1, x2, y2 = [int(v) for v in bbox]
+            w = max(0, x2 - x1)
+            h = max(0, y2 - y1)
+        except Exception:
+            x1 = y1 = w = h = 0
+
+        rows.append(
+            f"""
+            <tr>
+              <td style="color:#475569; width:52px;">{i}</td>
+              <td style="font-weight:800; color:#0f172a;">{label}</td>
+              <td style="color:#0f172a;">{conf*100:.1f}%</td>
+              <td>{_badge_html(label)}</td>
+              <td style="color:#475569;">{x1}, {y1}, {w}, {h}</td>
+            </tr>
+            """
+        )
+
+    st.markdown(
+        f"""
+        <div class="hn-card">
+          <div class="hn-card-h">
+            <div>
+              Results
+              <div class="hn-sub">Populated from YOLO outputs (label, confidence, bbox).</div>
+            </div>
+            <div class="hn-pill">Model: {model_name}</div>
+          </div>
+
+          <div class="hn-card-b">
+            <div style="padding: 14px 18px; display:flex; align-items:center; justify-content:space-between;">
+              <div style="font-weight:900; color:#0f172a;">Detections Table</div>
+              <div style="font-size:0.85rem; color:#64748b; font-weight:700;">Sorted by confidence</div>
+            </div>
+
+            <div class="hn-table-wrap">
+              <table class="hn-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>LABEL</th>
+                    <th>CONFIDENCE</th>
+                    <th>COMPLIANCE</th>
+                    <th>BBOX (X,Y,W,H)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {''.join(rows)}
+                </tbody>
+              </table>
+            </div>
+
+            <div class="hn-foot">
+              Tip: For your final demo, add “export report” (model version, threshold, timestamp, detections).
+            </div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 # ============================================================
 # WEBRTC CLASS
@@ -257,9 +447,9 @@ class HelmetTransformer(VideoTransformerBase):
             try:
                 detections, stats = detect_frame(img, self.model, self.conf)
                 self.last_dets = detections
-                self.helmet = stats['helmet_count']
-                self.no_helmet = stats['no_helmet_count']
-                self.alert = stats['alert']
+                self.helmet = stats["helmet_count"]
+                self.no_helmet = stats["no_helmet_count"]
+                self.alert = stats["alert"]
             except Exception:
                 pass
 
@@ -274,36 +464,25 @@ with st.sidebar:
 
     st.markdown("**🤖 Model Settings**")
 
-    # Discover models in ./models
     model_files = sorted([p.name for p in MODELS_DIR.glob("*.pt")])
-    
-    # Fallback list if folder empty
     if not model_files:
-        model_files = [DEFAULT_MODEL_PATH]
-    
-    # Pick default index if DEFAULT_MODEL_PATH exists
-    default_index = 0
-    if DEFAULT_MODEL_PATH in model_files:
-        default_index = model_files.index(DEFAULT_MODEL_PATH)
-    
-    model_choice = st.selectbox(
-        "Select Model",
-        options=model_files,
-        index=default_index,
-    )
-    
+        st.warning("No .pt files found in ./models. Falling back to yolov8n.pt")
+        model_files = ["yolov8n.pt"]
+
+    default_index = model_files.index(DEFAULT_MODEL_PATH) if DEFAULT_MODEL_PATH in model_files else 0
+    model_choice = st.selectbox("Select Model", options=model_files, index=default_index)
+
     confidence_threshold = st.slider("🎯 Confidence", 0.1, 1.0, CONFIDENCE_THRESHOLD, 0.05)
 
     st.markdown("---")
     st.markdown("**🌐 WebRTC / TURN Debug**")
     st.write("ICE servers loaded:", len(ICE_SERVERS))
-    # Optional: show first server for sanity (not credentials)
     if len(ICE_SERVERS) > 0 and "urls" in ICE_SERVERS[0]:
         st.write("First ICE urls:", ICE_SERVERS[0]["urls"])
 
     st.markdown("---")
     st.markdown("**📊 Session Stats**")
-    if 'total_detections' not in st.session_state:
+    if "total_detections" not in st.session_state:
         st.session_state.total_detections = 0
     st.metric("Total Detections", st.session_state.total_detections)
 
@@ -312,7 +491,11 @@ with st.sidebar:
 # ============================================================
 # LOAD MODEL
 # ============================================================
-model = load_model(model_choice)
+if model_choice == "yolov8n.pt":
+    model = YOLO("yolov8n.pt")
+else:
+    model = load_model(model_choice)
+
 if not model:
     st.sidebar.warning(f"⚠️ Could not load {model_choice}, using YOLOv8n")
     model = YOLO("yolov8n.pt")
@@ -333,7 +516,7 @@ with tab1:
     with col2:
         st.markdown(
             '<div class="info-box"><strong>💡 Tips:</strong><br>• Clear, well-lit images<br>• JPG, PNG, BMP</div>',
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
 
     with col1:
@@ -341,10 +524,13 @@ with tab1:
             "Choose image",
             ["jpg", "jpeg", "png", "bmp"],
             key="img",
-            label_visibility="collapsed"
+            label_visibility="collapsed",
         )
 
-    if img_file:
+    # Run button so table appears only after explicit detection
+    run_img = st.button("Run Detection", key="run_img")
+
+    if img_file and run_img:
         file_bytes = np.asarray(bytearray(img_file.read()), dtype=np.uint8)
         frame = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
 
@@ -354,16 +540,17 @@ with tab1:
             st.session_state.total_detections += len(dets)
 
         annotated_rgb = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
+        original_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
         c1, c2 = st.columns(2, gap="large")
         with c1:
             st.markdown("**📷 Original**")
-            st.image(img_file, use_container_width=True)
+            st.image(original_rgb, use_container_width=True)
         with c2:
             st.markdown("**🎯 Result**")
             st.image(annotated_rgb, use_container_width=True)
 
-        if stats['alert']:
+        if stats["alert"]:
             st.markdown('<div class="alert-danger">⚠️ NO HELMET DETECTED!</div>', unsafe_allow_html=True)
             play_alarm()
         else:
@@ -371,13 +558,16 @@ with tab1:
 
         st.markdown("### 📊 Summary")
         m1, m2, m3 = st.columns(3)
-        m1.metric("🟢 Helmets", stats['helmet_count'])
-        m2.metric("🔴 No Helmets", stats['no_helmet_count'])
+        m1.metric("🟢 Helmets", stats["helmet_count"])
+        m2.metric("🔴 No Helmets", stats["no_helmet_count"])
         m3.metric("📝 Total Objects", len(dets))
 
-        temp_img = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg')
+        # Fancy detections table (Image Detection only)
+        render_detection_table(dets, model_choice)
+
+        temp_img = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
         cv2.imwrite(temp_img.name, annotated)
-        with open(temp_img.name, 'rb') as f:
+        with open(temp_img.name, "rb") as f:
             st.download_button("📥 Download Result", f, f"result_{img_file.name}", "image/jpeg")
 
 # --- TAB 2: VIDEO DETECTION ---
@@ -388,7 +578,7 @@ with tab2:
     with col2:
         st.markdown(
             '<div class="info-box"><strong>💡 Fast Mode:</strong><br>• Optimized frame skipping<br>• Live inference preview<br>• MP4, AVI, MOV</div>',
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
 
     with col1:
@@ -396,23 +586,23 @@ with tab2:
             "Choose video",
             ["mp4", "avi", "mov", "mkv"],
             key="vid",
-            label_visibility="collapsed"
+            label_visibility="collapsed",
         )
 
     if vid_file:
         st.markdown("### 🎬 Processing")
         if st.button("▶️ Start Live Inference", type="primary"):
-            tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+            tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
             tfile.write(vid_file.read())
 
             cap = cv2.VideoCapture(tfile.name)
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            fps = int(cap.get(cv2.CAP_PROP_FPS))
-            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            fps = int(cap.get(cv2.CAP_PROP_FPS)) or 25
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 0
 
-            outfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
-            out = cv2.VideoWriter(outfile.name, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
+            outfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+            out = cv2.VideoWriter(outfile.name, cv2.VideoWriter_fourcc(*"mp4v"), fps, (width, height))
 
             st_frame = st.empty()
             st_metrics = st.empty()
@@ -420,7 +610,7 @@ with tab2:
 
             frame_count = 0
             cached_detections = []
-            current_stats = {'helmet_count': 0, 'no_helmet_count': 0, 'alert': False}
+            current_stats = {"helmet_count": 0, "no_helmet_count": 0, "alert": False}
 
             while cap.isOpened():
                 ret, frame = cap.read()
@@ -428,50 +618,53 @@ with tab2:
                     break
 
                 frame_count += 1
-
                 if frame_count % FRAME_SKIP == 0 or frame_count == 1:
                     cached_detections, current_stats = detect_frame(frame, model, confidence_threshold)
 
                 annotated = draw_boxes(frame, cached_detections)
                 out.write(annotated)
 
-                if current_stats['alert']:
+                if current_stats["alert"]:
                     play_alarm()
 
                 st_frame.image(
                     cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB),
-                    caption=f"Processing Frame {frame_count}/{total_frames}",
-                    use_container_width=True
+                    caption=f"Processing Frame {frame_count}/{total_frames}" if total_frames else f"Processing Frame {frame_count}",
+                    use_container_width=True,
                 )
 
                 with st_metrics.container():
                     c1, c2, c3 = st.columns(3)
-                    c1.metric("🟢 Helmets", current_stats['helmet_count'])
-                    c2.metric("🔴 Violations", current_stats['no_helmet_count'])
-                    c3.metric("⏱️ Progress", f"{int(frame_count/total_frames*100)}%")
+                    c1.metric("🟢 Helmets", current_stats["helmet_count"])
+                    c2.metric("🔴 Violations", current_stats["no_helmet_count"])
+                    c3.metric("⏱️ Progress", f"{int(frame_count/total_frames*100)}%" if total_frames else "-")
 
-                st_progress.progress(frame_count / total_frames)
+                if total_frames:
+                    st_progress.progress(min(frame_count / total_frames, 1.0))
 
             cap.release()
             out.release()
 
             st.success("✅ Processing Complete!")
-            st.session_state.total_detections += (current_stats['helmet_count'] + current_stats['no_helmet_count'])
+            st.session_state.total_detections += (current_stats["helmet_count"] + current_stats["no_helmet_count"])
 
-            with open(outfile.name, 'rb') as f:
+            with open(outfile.name, "rb") as f:
                 st.download_button("📥 Download Result", f, "result.mp4", "video/mp4")
 
 # --- TAB 3: REAL-TIME DETECTION (WEBRTC) ---
 with tab3:
     st.markdown("### 📱 Real-Time Live Detection")
-    st.markdown("""
+    st.markdown(
+        """
     <div class="info-box">
     <strong>🎥 Live Webcam:</strong><br>
     • Click "START" below<br>
     • Uses optimized frame skipping for smoother performance<br>
     • Works on mobile & desktop (TURN enabled for hotspots)
     </div>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
     ctx = webrtc_streamer(
         key="helmet-live",
