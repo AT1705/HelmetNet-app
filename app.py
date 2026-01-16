@@ -7,6 +7,7 @@ UPDATED:
 - Use Streamlit Secrets (st.secrets) instead of os.environ
 - Model dropdown from ./models/*.pt
 - Fancy detections table shown under Image Detection (after Run)
+- Table rendering forced via components.html to avoid "HTML printed as text" issues
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 import streamlit as st
+import streamlit.components.v1 as components
 from twilio.rest import Client
 from ultralytics import YOLO
 from streamlit_webrtc import (
@@ -42,21 +44,14 @@ st.set_page_config(
 # ============================================================
 @st.cache_resource
 def get_twilio_ice_servers():
-    """
-    Gets ICE servers (STUN/TURN) from Twilio Network Traversal Service.
-    This is the most reliable method for restrictive networks (hotspots).
-    """
     try:
         account_sid = st.secrets["TWILIO_ACCOUNT_SID"]
         auth_token = st.secrets["TWILIO_AUTH_TOKEN"]
         client = Client(account_sid, auth_token)
-
-        token = client.tokens.create()  # returns ephemeral TURN creds
+        token = client.tokens.create()
         ice_servers = token.ice_servers
-
         if not ice_servers:
             return [{"urls": ["stun:stun.l.google.com:19302"]}]
-
         return ice_servers
     except Exception as e:
         st.sidebar.error(f"TURN setup error: {e}")
@@ -164,6 +159,7 @@ st.markdown(
         justify-content: space-between;
         gap: 12px;
         font-weight: 800;
+        color: #0f172a;
     }
     .hn-pill {
         padding: 6px 10px;
@@ -175,18 +171,18 @@ st.markdown(
         color: #334155;
         white-space: nowrap;
     }
-    .hn-card-b { padding: 0; }
     .hn-sub {
         font-weight: 500;
         font-size: 0.9rem;
         color: #64748b;
         margin-top: 2px;
     }
-    .hn-table-wrap { overflow-x: auto; }
+    .hn-table-wrap { overflow-x: auto; padding: 0 0 6px 0; }
     .hn-table {
         width: 100%;
         border-collapse: collapse;
         min-width: 760px;
+        background: white;
     }
     .hn-table thead th {
         text-align: left;
@@ -246,24 +242,19 @@ NO_HELMET_LABELS = ["no helmet", "no_helmet", "no-helmet", "nohelmet"]
 CONFIDENCE_THRESHOLD = 0.50
 FRAME_SKIP = 3
 MODELS_DIR = Path("models")
-DEFAULT_MODEL_PATH = "model_1.pt"  # filename only
+DEFAULT_MODEL_PATH = "model_1.pt"
 
 # ============================================================
 # UTILS & LOGIC
 # ============================================================
 @st.cache_resource
 def load_model(model_file: str):
-    """
-    model_file: filename like 'model_1.pt' (located in ./models)
-    Cached per filename so switching models is fast.
-    """
     try:
         candidate = MODELS_DIR / model_file
         if candidate.exists():
             model = YOLO(str(candidate))
             st.sidebar.success(f"✅ Model loaded: {model_file}")
             return model
-
         st.sidebar.warning("⚠️ Model not found in ./models, using YOLOv8n")
         return YOLO("yolov8n.pt")
     except Exception as e:
@@ -273,7 +264,7 @@ def load_model(model_file: str):
 
 def play_alarm():
     if "last_alarm" not in st.session_state:
-        st.session_state.last_alarm = 0
+        st.session_state.last_alarm = 0.0
     if time.time() - st.session_state.last_alarm > 3:
         if Path("alert.mp3").exists():
             st.audio("alert.mp3", format="audio/mp3", autoplay=True)
@@ -324,28 +315,27 @@ def detect_frame(frame, model, conf_threshold):
 def _badge_html(label: str) -> str:
     lab = (label or "").lower()
     non = lab in NO_HELMET_LABELS or lab.replace("_", "-") in NO_HELMET_LABELS
-    if non:
-        return '<span class="hn-badge-bad">Non-compliant</span>'
-    return '<span class="hn-badge-ok">Compliant</span>'
+    return '<span class="hn-badge-bad">Non-compliant</span>' if non else '<span class="hn-badge-ok">Compliant</span>'
 
 
 def render_detection_table(detections: list[dict], model_name: str) -> None:
+    """
+    Force-rendered via components.html so it will never show raw HTML as text.
+    """
     if not detections:
-        st.markdown(
-            f"""
-            <div class="hn-card">
-              <div class="hn-card-h">
-                <div>
-                  Results
-                  <div class="hn-sub">No detections found.</div>
-                </div>
-                <div class="hn-pill">Model: {model_name}</div>
-              </div>
-              <div class="hn-foot">Tip: Try a clearer image for better detection.</div>
+        html = f"""
+        <div class="hn-card">
+          <div class="hn-card-h">
+            <div>
+              Results
+              <div class="hn-sub">No detections found.</div>
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
+            <div class="hn-pill">Model: {model_name}</div>
+          </div>
+          <div class="hn-foot">Tip: Try a clearer image for better detection.</div>
+        </div>
+        """
+        components.html(html, height=190, scrolling=False)
         return
 
     dets = sorted(detections, key=lambda d: float(d.get("confidence", 0.0)), reverse=True)
@@ -356,7 +346,6 @@ def render_detection_table(detections: list[dict], model_name: str) -> None:
         conf = float(det.get("confidence", 0.0))
         bbox = det.get("bbox", [0, 0, 0, 0])
 
-        # xyxy -> x,y,w,h
         try:
             x1, y1, x2, y2 = [int(v) for v in bbox]
             w = max(0, x2 - x1)
@@ -376,48 +365,48 @@ def render_detection_table(detections: list[dict], model_name: str) -> None:
             """
         )
 
-    st.markdown(
-        f"""
-        <div class="hn-card">
-          <div class="hn-card-h">
-            <div>
-              Results
-              <div class="hn-sub">Populated from YOLO outputs (label, confidence, bbox).</div>
-            </div>
-            <div class="hn-pill">Model: {model_name}</div>
-          </div>
-
-          <div class="hn-card-b">
-            <div style="padding: 14px 18px; display:flex; align-items:center; justify-content:space-between;">
-              <div style="font-weight:900; color:#0f172a;">Detections Table</div>
-              <div style="font-size:0.85rem; color:#64748b; font-weight:700;">Sorted by confidence</div>
-            </div>
-
-            <div class="hn-table-wrap">
-              <table class="hn-table">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>LABEL</th>
-                    <th>CONFIDENCE</th>
-                    <th>COMPLIANCE</th>
-                    <th>BBOX (X,Y,W,H)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {''.join(rows)}
-                </tbody>
-              </table>
-            </div>
-
-            <div class="hn-foot">
-              Tip: For your final demo, add “export report” (model version, threshold, timestamp, detections).
-            </div>
-          </div>
+    html = f"""
+    <div class="hn-card">
+      <div class="hn-card-h">
+        <div>
+          Results
+          <div class="hn-sub">Populated from YOLO outputs (label, confidence, bbox).</div>
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        <div class="hn-pill">Model: {model_name}</div>
+      </div>
+
+      <div>
+        <div style="padding: 14px 18px; display:flex; align-items:center; justify-content:space-between;">
+          <div style="font-weight:900; color:#0f172a;">Detections Table</div>
+          <div style="font-size:0.85rem; color:#64748b; font-weight:700;">Sorted by confidence</div>
+        </div>
+
+        <div class="hn-table-wrap">
+          <table class="hn-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>LABEL</th>
+                <th>CONFIDENCE</th>
+                <th>COMPLIANCE</th>
+                <th>BBOX (X,Y,W,H)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {''.join(rows)}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="hn-foot">
+          Tip: For your final demo, add “export report” (model version, threshold, timestamp, detections).
+        </div>
+      </div>
+    </div>
+    """
+
+    # Height: adjust if you expect many rows
+    components.html(html, height=520, scrolling=True)
 
 # ============================================================
 # WEBRTC CLASS
@@ -463,8 +452,8 @@ with st.sidebar:
     st.markdown("---")
 
     st.markdown("**🤖 Model Settings**")
-
     model_files = sorted([p.name for p in MODELS_DIR.glob("*.pt")])
+
     if not model_files:
         st.warning("No .pt files found in ./models. Falling back to yolov8n.pt")
         model_files = ["yolov8n.pt"]
@@ -527,7 +516,6 @@ with tab1:
             label_visibility="collapsed",
         )
 
-    # Run button so table appears only after explicit detection
     run_img = st.button("Run Detection", key="run_img")
 
     if img_file and run_img:
@@ -562,7 +550,7 @@ with tab1:
         m2.metric("🔴 No Helmets", stats["no_helmet_count"])
         m3.metric("📝 Total Objects", len(dets))
 
-        # Fancy detections table (Image Detection only)
+        # Fancy detections table (forced HTML render)
         render_detection_table(dets, model_choice)
 
         temp_img = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
