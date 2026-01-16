@@ -386,59 +386,30 @@ def render_demo_page():
 
     # LEFT: Configuration
     with col_cfg:
-        # Single, properly wrapped card for ALL configuration controls
-        st.markdown(
-            """
-            <div class="hn-card">
-              <div class="hn-card-h">Configuration</div>
-              <div class="hn-card-b">
-            """,
-            unsafe_allow_html=True,
-        )
-    
-        # Model picker
+        st.markdown("<div class='hn-card'><div class='hn-card-h'>Configuration</div><div class='hn-card-b'>", unsafe_allow_html=True)
+
         model_files = sorted([p.name for p in MODELS_DIR.glob("*.pt")])
         if not model_files:
             model_files = ["best.pt"]
-    
-        st.markdown(
-            "<div class='hn-section-title'>Model Settings</div>",
-            unsafe_allow_html=True,
-        )
-        model_choice = st.selectbox(
-            "Model",
-            options=model_files,
-            index=0,
-            label_visibility="visible",
-        )
-    
-        # Confidence slider
-        conf = st.slider(
-            "Confidence Threshold",
-            0.10,
-            1.00,
-            DEFAULT_CONFIDENCE,
-            0.05,
-        )
-    
-        # Session stats
+
+        st.markdown("<div style='font-size:0.85rem; font-weight:800; color:#334155; margin-bottom:0.25rem;'>Model Settings</div>", unsafe_allow_html=True)
+        model_choice = st.selectbox("Model", options=model_files, index=0)
+
+        conf = st.slider("Confidence Threshold", 0.10, 1.00, DEFAULT_CONFIDENCE, 0.05)
+
         if "total_detections" not in st.session_state:
             st.session_state.total_detections = 0
-    
-        st.markdown("<div class='hn-divider'></div>", unsafe_allow_html=True)
-        st.markdown(
-            "<div class='hn-section-title'>Session Stats</div>",
-            unsafe_allow_html=True,
-        )
+
+        st.markdown("<div style='margin-top:1rem; padding-top:1rem; border-top:1px solid #e2e8f0;'>", unsafe_allow_html=True)
+        st.markdown("<div style='font-size:0.85rem; font-weight:800; color:#334155; margin-bottom:0.25rem;'>Session Stats</div>", unsafe_allow_html=True)
         st.metric("Total Detections", st.session_state.total_detections)
-    
-        # ICE debug
+        st.markdown("</div>", unsafe_allow_html=True)
+
         ice_servers = get_twilio_ice_servers()
-        st.markdown("<div class='hn-divider'></div>", unsafe_allow_html=True)
         st.caption(f"ICE servers loaded: {len(ice_servers)}")
-    
-        # Close card
-        st.markdown("</div></div>", unsafe_allow_html=True)
+
+        st.markdown("</div></div></div>", unsafe_allow_html=True)
+
     # RIGHT: Content
     with col_main:
         model = load_model(model_choice)
