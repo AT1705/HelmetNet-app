@@ -149,20 +149,28 @@ st.markdown("""
 NO_HELMET_LABELS = ["no helmet", "no_helmet", "no-helmet"]
 CONFIDENCE_THRESHOLD = 0.50
 FRAME_SKIP = 3
-DEFAULT_MODEL_PATH = "best.pt"
+MODELS_DIR = Path("models")
 
 # ============================================================
 # UTILS & LOGIC
 # ============================================================
 @st.cache_resource
-def load_model(path):
+def load_model(model_file: str):
+    """
+    model_file: filename like 'model_1.pt' (located in ./models)
+    Cached per filename so switching models is fast.
+    """
     try:
-        if Path(path).exists():
-            model = YOLO(path)
-            st.sidebar.success("✅ Model loaded")
+        candidate = MODELS_DIR / model_file
+        if candidate.exists():
+            model = YOLO(str(candidate))
+            st.sidebar.success(f"✅ Model loaded: {model_file}")
             return model
-        st.sidebar.warning("⚠️ Model not found, using YOLOv8n")
+
+        # fallback (if file missing)
+        st.sidebar.warning("⚠️ Model not found in ./models, using YOLOv8n")
         return YOLO("yolov8n.pt")
+
     except Exception as e:
         st.sidebar.error(f"Model load error: {e}")
         return None
@@ -258,8 +266,25 @@ with st.sidebar:
     st.markdown("---")
 
     st.markdown("**🤖 Model Settings**")
-    model_path = st.text_input("Model Path", DEFAULT_MODEL_PATH)
 
+    # Discover models in ./models
+    model_files = sorted([p.name for p in MODELS_DIR.glob("*.pt")])
+    
+    # Fallback list if folder empty
+    if not model_files:
+        model_files = [DEFAULT_MODEL_PATH]
+    
+    # Pick default index if DEFAULT_MODEL_PATH exists
+    default_index = 0
+    if DEFAULT_MODEL_PATH in model_files:
+        default_index = model_files.index(DEFAULT_MODEL_PATH)
+    
+    model_choice = st.selectbox(
+        "Select Model",
+        options=model_files,
+        index=default_index,
+    )
+    
     confidence_threshold = st.slider("🎯 Confidence", 0.1, 1.0, CONFIDENCE_THRESHOLD, 0.05)
 
     st.markdown("---")
@@ -280,9 +305,9 @@ with st.sidebar:
 # ============================================================
 # LOAD MODEL
 # ============================================================
-model = load_model(model_path)
+model = load_model(model_choice)
 if not model:
-    st.sidebar.warning(f"⚠️ Could not load {model_path}, using default YOLOv8n")
+    st.sidebar.warning(f"⚠️ Could not load {model_choice}, using YOLOv8n")
     model = YOLO("yolov8n.pt")
 
 # ============================================================
