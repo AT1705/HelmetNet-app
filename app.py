@@ -1,484 +1,357 @@
-"""
-AI Helmet Detection System (CSC738)
-OPTIMIZED: Live Inference + Frame Skipping + Modern Safety Theme UI
-"""
-
 import streamlit as st
-from ultralytics import YOLO
-import cv2
-import numpy as np
-from pathlib import Path
-import tempfile
-import time
-import os
-from datetime import timedelta
-from streamlit_webrtc import VideoTransformerBase, webrtc_streamer, WebRtcMode, RTCConfiguration
 
 # ============================================================
 # PAGE CONFIG
 # ============================================================
 st.set_page_config(
-    page_title="AI Helmet Detection",
+    page_title="HelmetNet",
     page_icon="🛵",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed",
 )
 
 # ============================================================
-# SAFETY THEME CSS (FROM APP.PY)
+# SHARED UI / BRANDING (HelmetNet look & feel)
 # ============================================================
-st.markdown("""
-<style>
-    /* Global Styles using Streamlit Variables */
-    .block-container {
-        padding-top: 1.5rem !important; 
-    }
-    
-    /* Headers */
-    .main-header {
-        font-size: 2.5rem; 
-        font-weight: 800; 
-        color: var(--text-color); 
-        text-align: center; 
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
-    }
-    
-    .sub-header {
-        text-align: center; 
-        font-size: 1.1rem; 
-        color: var(--text-color); 
-        opacity: 0.8;
-        font-weight: 500; 
-        margin-bottom: 1.5rem;
-    }
-    
-    h2 {
-        color: var(--text-color) !important; 
-        font-weight: 700 !important; 
-        border-bottom: 3px solid #FFD700; 
-        padding-bottom: 0.5rem;
-    }
-    
-    /* Tabs */
-    .stTabs [data-baseweb="tab-list"] {
-        background: var(--secondary-background-color); 
-        padding: 0.5rem; 
-        border-radius: 10px; 
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    .stTabs [data-baseweb="tab"] {
-        height: 50px; 
-        border-radius: 8px; 
-        color: var(--text-color); 
-        font-weight: 600; 
-        padding: 0 1.5rem;
-    }
-    .stTabs [aria-selected="true"] {
-        background: #FFD700 !important; 
-        color: #1E3A8A !important; 
-    }
-    
-    /* Alerts */
-    .alert-danger {
-        background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%); 
-        color: white; 
-        padding: 20px; 
-        border-radius: 12px;
-        text-align: center; 
-        font-size: 1.3rem; 
-        font-weight: 700; 
-        animation: pulse 2s infinite; 
-        margin: 20px 0;
-        box-shadow: 0 4px 6px rgba(239,68,68,0.3); 
-        border: 3px solid #FCA5A5;
-    }
-    .alert-success {
-        background: linear-gradient(135deg, #22C55E 0%, #16A34A 100%); 
-        color: white; 
-        padding: 20px; 
-        border-radius: 12px;
-        text-align: center; 
-        font-size: 1.3rem; 
-        font-weight: 700; 
-        margin: 20px 0; 
-        box-shadow: 0 4px 6px rgba(34,197,94,0.3); 
-        border: 3px solid #86EFAC;
-    }
-    @keyframes pulse {0%, 100% {opacity: 1; transform: scale(1);} 50% {opacity: 0.85; transform: scale(1.02);}}
-    
-    /* Buttons */
-    .stButton > button {
-        background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%); 
-        color: #1E3A8A; 
-        border: none;
-        border-radius: 10px;
-        padding: 0.6rem 2rem; 
-        font-weight: 700; 
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    }
-    .stButton > button:hover {
-        transform: translateY(-2px); 
-        box-shadow: 0 6px 12px rgba(0,0,0,0.15);
-        color: #1E3A8A;
-    }
-    .stDownloadButton > button {
-        background: linear-gradient(135deg, #1E3A8A 0%, #3B82F6 100%); 
-        color: white;
-        border: none;
-    }
-    
-    /* Metrics */
-    [data-testid="stMetricValue"] {
-        font-size: 1.8rem !important; 
-        font-weight: 700 !important; 
-        color: var(--text-color);
-    }
-    [data-testid="metric-container"] {
-        background: var(--secondary-background-color); 
-        padding: 1rem; 
-        border-radius: 10px; 
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05); 
-        border-left: 4px solid #FFD700;
-    }
-    
-    /* File uploader */
-    [data-testid="stFileUploader"] {
-        background: var(--secondary-background-color); 
-        padding: 1.5rem; 
-        border-radius: 10px; 
-        border: 2px dashed #FFD700;
-    }
-    
-    audio {display: none;}
-    
-    /* Info Box */
-    .info-box {
-        background: rgba(59, 130, 246, 0.1); 
-        padding: 1rem; 
-        border-radius: 10px; 
-        border-left: 4px solid #1E3A8A; 
-        margin: 1rem 0;
-        color: var(--text-color);
-    }
-</style>
-""", unsafe_allow_html=True)
+BRAND = {
+    "bg": "#F8FAFC",          # slate-50
+    "card": "rgba(255,255,255,0.90)",
+    "text": "#0F172A",        # slate-900
+    "muted": "#475569",       # slate-600
+    "border": "rgba(148,163,184,0.35)",  # slate-300 w/ alpha
+    "slate700": "#334155",
+    "slate800": "#1F2937",
+    "slate900": "#0F172A",
+    "amber": "#F59E0B",       # amber-500
+    "amberHover": "#FBBF24",  # amber-400
+}
 
-# ============================================================
-# CONFIGURATION
-# ============================================================
-NO_HELMET_LABELS = ["no helmet", "no_helmet", "no-helmet"]
-CONFIDENCE_THRESHOLD = 0.25
-FRAME_SKIP = 3  # Optimization from app_2.py
-DEFAULT_MODEL_PATH = "best.pt"
+def inject_global_css(active_page: str) -> None:
+    st.markdown(
+        f"""
+        <style>
+          /* App background */
+          .stApp {{
+            background: {BRAND["bg"]};
+            color: {BRAND["text"]};
+          }}
 
-# ============================================================
-# UTILS & LOGIC (FROM APP_2.PY)
-# ============================================================
-@st.cache_resource
-def load_model(path):
-    try:
-        if Path(path).exists():
-            model = YOLO(path)
-            st.sidebar.success("✅ Model loaded")
-            return model
-        st.sidebar.warning("⚠️ Model not found")
-        return YOLO("yolov8n.pt")
-    except Exception as e:
-        st.sidebar.error(f"Error: {e}")
-        return None
+          /* Reduce default padding + widen */
+          .block-container {{
+            padding-top: 5.2rem;   /* room for fixed nav */
+            padding-bottom: 2.5rem;
+            max-width: 1200px;
+          }}
 
-def play_alarm():
-    # Logic from app_2.py (Rate limited)
-    if 'last_alarm' not in st.session_state: st.session_state.last_alarm = 0
-    if time.time() - st.session_state.last_alarm > 3:
-        if Path("alert.mp3").exists():
-            st.audio("alert.mp3", format="audio/mp3", autoplay=True)
-        st.session_state.last_alarm = time.time()
+          /* Hide Streamlit chrome */
+          #MainMenu, footer, header {{ visibility: hidden; }}
+          [data-testid="stStatusWidget"] {{ display: none; }}
 
-def draw_boxes(frame, detections):
-    """
-    Manually draws bounding boxes (Logic from app_2.py).
-    """
-    img = frame.copy()
-    for det in detections:
-        x1, y1, x2, y2 = map(int, det['bbox'])
-        # Red for no helmet, Green for helmet
-        color = (0, 0, 139) if det['class'] in NO_HELMET_LABELS else (0, 100, 0)
-        label = f"{det['class']} {det['confidence']:.2f}"
-        
-        # Draw Rectangle
-        cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
-        
-        # Draw Label Background
-        (w, h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-        cv2.rectangle(img, (x1, y1 - 20), (x1 + w, y1), color, -1)
-        cv2.putText(img, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-    return img
+          /* --- Top Nav (glass) --- */
+          .hn-nav {{
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            z-index: 9999;
+            background: rgba(255,255,255,0.92);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(226,232,240,1);
+            box-shadow: 0 1px 8px rgba(15,23,42,0.06);
+          }}
+          .hn-nav-inner {{
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0.8rem 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+          }}
+          .hn-brand {{
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            font-weight: 800;
+            color: {BRAND["text"]};
+            letter-spacing: -0.02em;
+            font-size: 1.15rem;
+          }}
+          .hn-brand-badge {{
+            width: 36px; height: 36px;
+            border-radius: 12px;
+            display:flex; align-items:center; justify-content:center;
+            background: linear-gradient(135deg, {BRAND["slate700"]}, {BRAND["slate900"]});
+            color: white;
+            box-shadow: 0 10px 25px rgba(15,23,42,0.18);
+          }}
+          .hn-links {{
+            display:flex;
+            align-items:center;
+            gap: 1.1rem;
+          }}
+          .hn-link {{
+            font-weight: 600;
+            color: {BRAND["muted"]};
+            text-decoration: none;
+            padding: 0.35rem 0.2rem;
+          }}
+          .hn-link:hover {{ color: {BRAND["text"]}; }}
+          .hn-link.active {{ color: {BRAND["text"]}; }}
 
-def detect_frame(frame, model, conf_threshold):
-    # Logic from app_2.py
-    results = model.predict(frame, conf=conf_threshold, imgsz=640, verbose=False, device='cpu')
-    
-    helmet_count = 0
-    no_helmet_count = 0
-    detections = []
-    
-    for box in results[0].boxes:
-        cls_id = int(box.cls)
-        cls_name = model.names[cls_id].lower()
-        conf = float(box.conf)
-        bbox = box.xyxy[0].cpu().numpy().tolist()
-        
-        detections.append({'class': cls_name, 'confidence': conf, 'bbox': bbox})
-        
-        if cls_name in NO_HELMET_LABELS:
-            no_helmet_count += 1
-        else:
-            helmet_count += 1
+          .hn-cta {{
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            padding: 0.55rem 1rem;
+            border-radius: 14px;
+            font-weight: 800;
+            text-decoration:none;
+            background: {BRAND["amber"]};
+            color: {BRAND["slate900"]};
+            box-shadow: 0 10px 25px rgba(245,158,11,0.25);
+            border: 1px solid rgba(245,158,11,0.35);
+            transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
+          }}
+          .hn-cta:hover {{
+            background: {BRAND["amberHover"]};
+            transform: translateY(-1px);
+            box-shadow: 0 14px 35px rgba(245,158,11,0.28);
+            color: {BRAND["slate900"]};
+          }}
 
-    return detections, {
-        'helmet_count': helmet_count,
-        'no_helmet_count': no_helmet_count,
-        'alert': no_helmet_count > 0
-    }
+          /* --- Cards / Sections --- */
+          .hn-card {{
+            background: {BRAND["card"]};
+            border: 1px solid {BRAND["border"]};
+            border-radius: 18px;
+            box-shadow: 0 20px 50px rgba(15,23,42,0.06);
+          }}
+          .hn-card-pad {{ padding: 1.5rem; }}
 
-# ============================================================
-# WEBRTC CLASS
-# ============================================================
-class HelmetTransformer(VideoTransformerBase):
-    def __init__(self):
-        self.model = None
-        self.conf = 0.25
-        self.helmet = 0
-        self.no_helmet = 0
-        self.frame_cnt = 0
-        self.last_dets = [] # Cache detections
-        self.alert = False
-        
-    def set_model(self, model, conf):
-        self.model = model
-        self.conf = conf
-        
-    def transform(self, frame):
-        img = frame.to_ndarray(format="bgr24")
-        if self.model is None: return img
-        
-        self.frame_cnt += 1
-        
-        # OPTIMIZATION: Run AI only every 3rd frame
-        if self.frame_cnt % FRAME_SKIP == 0:
-            try:
-                detections, stats = detect_frame(img, self.model, self.conf)
-                self.last_dets = detections
-                self.helmet = stats['helmet_count']
-                self.no_helmet = stats['no_helmet_count']
-                self.alert = stats['alert']
-            except: pass
-            
-        # Draw the (new or cached) boxes
-        return draw_boxes(img, self.last_dets)
+          .hn-hero {{
+            border-radius: 22px;
+            overflow: hidden;
+            border: 1px solid rgba(148,163,184,0.25);
+            box-shadow: 0 30px 80px rgba(15,23,42,0.12);
+            background: radial-gradient(1000px 380px at 20% 10%, rgba(245,158,11,0.18), transparent 60%),
+                        linear-gradient(135deg, {BRAND["slate800"]}, {BRAND["slate900"]});
+            color: white;
+          }}
+          .hn-hero-inner {{
+            padding: 3.2rem 2.2rem;
+          }}
+          .hn-kicker {{
+            display:inline-flex;
+            gap: 0.6rem;
+            align-items:center;
+            font-weight: 800;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            font-size: 0.78rem;
+            opacity: 0.92;
+          }}
+          .hn-title {{
+            margin-top: 0.75rem;
+            font-size: 3.2rem;
+            line-height: 1.08;
+            font-weight: 900;
+            letter-spacing: -0.03em;
+          }}
+          .hn-subtitle {{
+            margin-top: 0.9rem;
+            font-size: 1.15rem;
+            color: rgba(226,232,240,0.92);
+            max-width: 52rem;
+          }}
+          .hn-hero-actions {{
+            margin-top: 1.6rem;
+            display:flex;
+            flex-wrap: wrap;
+            gap: 0.8rem;
+          }}
 
-# ============================================================
-# SIDEBAR
-# ============================================================
-with st.sidebar:
-    st.markdown("### ⚙️ Configuration")
-    st.markdown("---")
-    
-    st.markdown("**🤖 Model Settings**")
-    
-    st.text_input("Model Path", DEFAULT_MODEL_PATH)
+          .hn-outline {{
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            padding: 0.55rem 1rem;
+            border-radius: 14px;
+            font-weight: 800;
+            text-decoration:none;
+            border: 2px solid rgba(255,255,255,0.85);
+            color: white;
+            background: rgba(255,255,255,0.06);
+          }}
+          .hn-outline:hover {{
+            background: rgba(255,255,255,0.10);
+            color: white;
+          }}
 
-    confidence_threshold = st.slider("🎯 Confidence", 0.1, 1.0, CONFIDENCE_THRESHOLD, 0.05)
-    
-    st.markdown("---")
-    st.markdown("**📊 Session Stats**")
-    if 'total_detections' not in st.session_state:
-        st.session_state.total_detections = 0
-    st.metric("Total Detections", st.session_state.total_detections)
-    
-    st.markdown("---")
+          .hn-stat {{
+            text-align: center;
+            padding: 1rem 0.5rem;
+          }}
+          .hn-stat-val {{
+            font-size: 2.2rem;
+            font-weight: 900;
+            color: {BRAND["slate800"]};
+            letter-spacing: -0.02em;
+          }}
+          .hn-stat-lbl {{
+            color: {BRAND["muted"]};
+            font-weight: 600;
+            margin-top: 0.2rem;
+          }}
 
-# LOAD MODEL
-model = load_model(DEFAULT_MODEL_PATH)
-if not model:
-    st.sidebar.warning(f"⚠️ Could not load {model_path}, using default YOLOv8n")
-    model = YOLO("yolov8n.pt")
+          .hn-feature {{
+            background: rgba(255,255,255,0.96);
+            border: 1px solid rgba(148,163,184,0.35);
+            border-radius: 18px;
+            padding: 1.25rem;
+            box-shadow: 0 16px 35px rgba(15,23,42,0.05);
+            transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+            height: 100%;
+          }}
+          .hn-feature:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 22px 45px rgba(15,23,42,0.08);
+            border-color: rgba(71,85,105,0.55);
+          }}
+          .hn-feature-icon {{
+            width: 44px; height: 44px;
+            border-radius: 14px;
+            display:flex; align-items:center; justify-content:center;
+            background: rgba(241,245,249,1);
+            color: {BRAND["slate700"]};
+            font-weight: 900;
+            margin-bottom: 0.8rem;
+          }}
+          .hn-feature-title {{
+            font-weight: 900;
+            color: {BRAND["text"]};
+            margin-bottom: 0.3rem;
+          }}
+          .hn-feature-desc {{
+            color: {BRAND["muted"]};
+            font-weight: 600;
+            font-size: 0.95rem;
+            line-height: 1.45;
+          }}
 
-# ============================================================
-# MAIN APP UI
-# ============================================================
-st.markdown('<h1 class="main-header">🛵 HelmetNet </h1>', unsafe_allow_html=True)
-st.markdown('<p class="sub-header">AI Helmet Detection System</p>', unsafe_allow_html=True)
+          .hn-footer {{
+            margin-top: 2.2rem;
+            color: {BRAND["muted"]};
+            font-weight: 600;
+            font-size: 0.9rem;
+          }}
+        </style>
 
-tab1, tab2, tab3 = st.tabs(["Image Detection", "Video Detection", "Real-Time Detection"])
-
-# --- TAB 1: IMAGE DETECTION ---
-with tab1:
-    st.markdown("### 📸 Upload an Image")
-    
-    col1, col2 = st.columns([2, 1])
-    with col2:
-        st.markdown('<div class="info-box"><strong>💡 Tips:</strong><br>• Clear, well-lit images<br>• JPG, PNG, BMP</div>', unsafe_allow_html=True)
-    
-    with col1:
-        img_file = st.file_uploader("Choose image", ["jpg", "jpeg", "png", "bmp"], key="img", label_visibility="collapsed")
-    
-    if img_file:
-        file_bytes = np.asarray(bytearray(img_file.read()), dtype=np.uint8)
-        frame = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-        
-        with st.spinner("🔍 Analyzing..."):
-            # Use logic from app_2 (draw_boxes)
-            dets, stats = detect_frame(frame, model, confidence_threshold)
-            annotated = draw_boxes(frame, dets)
-            st.session_state.total_detections += len(dets)
-            
-        annotated_rgb = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
-        
-        c1, c2 = st.columns(2, gap="large")
-        with c1:
-            st.markdown("**📷 Original**")
-            st.image(img_file, use_container_width=True)
-        with c2:
-            st.markdown("**🎯 Result**")
-            st.image(annotated_rgb, use_container_width=True)
-        
-        # Alerts (UI from app.py)
-        if stats['alert']:
-            st.markdown('<div class="alert-danger">⚠️ NO HELMET DETECTED!</div>', unsafe_allow_html=True)
-            play_alarm()
-        else:
-            st.markdown('<div class="alert-success">✅ All Safe!</div>', unsafe_allow_html=True)
-            
-        st.markdown("### 📊 Summary")
-        m1, m2, m3 = st.columns(3)
-        m1.metric("🟢 Helmets", stats['helmet_count'])
-        m2.metric("🔴 No Helmets", stats['no_helmet_count'])
-        m3.metric("📝 Total Objects", len(dets))
-        
-        # Download
-        temp_img = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg')
-        cv2.imwrite(temp_img.name, annotated)
-        with open(temp_img.name, 'rb') as f:
-            st.download_button("📥 Download Result", f, f"result_{img_file.name}", "image/jpeg")
-
-# --- TAB 2: VIDEO DETECTION (OPTIMIZED LOOP) ---
-with tab2:
-    st.markdown("### 🎥 Upload a Video")
-    
-    col1, col2 = st.columns([2, 1])
-    with col2:
-        st.markdown('<div class="info-box"><strong>💡 Fast Mode:</strong><br>• Optimized frame skipping<br>• Live inference preview<br>• MP4, AVI, MOV</div>', unsafe_allow_html=True)
-    
-    with col1:
-        vid_file = st.file_uploader("Choose video", ["mp4", "avi", "mov", "mkv"], key="vid", label_visibility="collapsed")
-    
-    if vid_file:
-        st.markdown("### 🎬 Processing")
-        if st.button("▶️ Start Live Inference", type="primary"):
-            tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
-            tfile.write(vid_file.read())
-            
-            cap = cv2.VideoCapture(tfile.name)
-            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            fps = int(cap.get(cv2.CAP_PROP_FPS))
-            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            
-            # Prepare Output
-            outfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
-            out = cv2.VideoWriter(outfile.name, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
-            
-            # Layout for live updates
-            st_frame = st.empty()
-            st_metrics = st.empty()
-            st_progress = st.progress(0)
-            
-            frame_count = 0
-            cached_detections = [] 
-            current_stats = {'helmet_count': 0, 'no_helmet_count': 0, 'alert': False}
-            
-            while cap.isOpened():
-                ret, frame = cap.read()
-                if not ret: break
-                
-                frame_count += 1
-                
-                # --- OPTIMIZATION LOGIC (From app_2) ---
-                if frame_count % FRAME_SKIP == 0 or frame_count == 1:
-                    cached_detections, current_stats = detect_frame(frame, model, confidence_threshold)
-                
-                annotated = draw_boxes(frame, cached_detections)
-                out.write(annotated)
-                
-                if current_stats['alert']: play_alarm()
-                
-                # Update UI
-                st_frame.image(cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB), 
-                             caption=f"Processing Frame {frame_count}/{total_frames}",
-                             use_container_width=True)
-                
-                # Metric Container styling
-                with st_metrics.container():
-                    c1, c2, c3 = st.columns(3)
-                    c1.metric("🟢 Helmets", current_stats['helmet_count'])
-                    c2.metric("🔴 Violations", current_stats['no_helmet_count'])
-                    c3.metric("⏱️ Progress", f"{int(frame_count/total_frames*100)}%")
-                
-                st_progress.progress(frame_count / total_frames)
-            
-            cap.release()
-            out.release()
-            
-            st.success("✅ Processing Complete!")
-            st.session_state.total_detections += (current_stats['helmet_count'] + current_stats['no_helmet_count'])
-            
-            with open(outfile.name, 'rb') as f:
-                st.download_button("📥 Download Result", f, "result.mp4", "video/mp4")
-
-# --- TAB 3: REAL-TIME DETECTION (WEBRTC) ---
-with tab3:
-    st.markdown("### 📱 Real-Time Live Detection")
-    st.markdown("""
-    <div class="info-box">
-    <strong>🎥 Live Webcam:</strong><br>
-    • Click "START" below<br>
-    • Uses optimized frame skipping for smoother performance<br>
-    • Works on mobile & desktop
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Webrtc Logic from app_2 wrapped in UI
-    ctx = webrtc_streamer(
-        key="helmet-live",
-        mode=WebRtcMode.SENDRECV,
-        rtc_configuration=RTCConfiguration({"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}),
-        video_processor_factory=HelmetTransformer,
-        async_processing=True,
+        <div class="hn-nav">
+          <div class="hn-nav-inner">
+            <div class="hn-brand">
+              <div class="hn-brand-badge">🛡️</div>
+              HelmetNet
+            </div>
+            <div class="hn-links">
+              <a class="hn-link {"active" if active_page=="home" else ""}" href="/">Home</a>
+              <a class="hn-link {"active" if active_page=="about" else ""}" href="/About">About</a>
+              <a class="hn-cta" href="/Demo">Start Demo</a>
+            </div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-    
-    if ctx.video_processor:
-        ctx.video_processor.set_model(model, confidence_threshold)
-        
-        st.markdown("### 📊 Live Stats")
-        m1, m2 = st.columns(2)
-        
-        # These will update automatically via Streamlit re-runs triggered by WebRTC
-        m1.metric("🟢 Helmets", ctx.video_processor.helmet)
-        m2.metric("🔴 Violations", ctx.video_processor.no_helmet)
-        
-        if ctx.video_processor.alert:
-            st.markdown('<div class="alert-danger">⚠️ NO HELMET DETECTED!</div>', unsafe_allow_html=True)
-            play_alarm()
-        else:
-            st.markdown('<div class="alert-success">✅ Area Secure</div>', unsafe_allow_html=True)
 
-st.markdown("---")
-st.caption("🚀 HelmetNet App | © 2025")
+inject_global_css(active_page="home")
 
+# ============================================================
+# LANDING CONTENT
+# ============================================================
+st.markdown(
+    """
+    <section class="hn-hero">
+      <div class="hn-hero-inner">
+        <div class="hn-kicker">AI-Powered Road Safety</div>
+        <div class="hn-title">Protecting Lives Through Intelligent Helmet Detection</div>
+        <div class="hn-subtitle">
+          HelmetNet applies computer vision to monitor motorcycle helmet compliance across images,
+          videos, and real-time streams—optimized for responsiveness and operational clarity.
+        </div>
+        <div class="hn-hero-actions">
+          <a class="hn-cta" href="/Demo">Try Demo Now</a>
+          <a class="hn-outline" href="/About">Learn More</a>
+        </div>
+      </div>
+    </section>
+    """,
+    unsafe_allow_html=True,
+)
 
+st.markdown("<div style='height: 1.1rem'></div>", unsafe_allow_html=True)
 
+# Stats strip
+stats = [
+    ("99.2%", "Detection Accuracy"),
+    ("50K+", "Daily Scans"),
+    ("35%", "Reduction in Violations"),
+    ("24/7", "Monitoring"),
+]
+c = st.columns(4)
+for i, (val, lbl) in enumerate(stats):
+    with c[i]:
+        st.markdown(
+            f"""
+            <div class="hn-card hn-stat">
+              <div class="hn-stat-val">{val}</div>
+              <div class="hn-stat-lbl">{lbl}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
+st.markdown("<div style='height: 1.4rem'></div>", unsafe_allow_html=True)
 
+# Feature grid (concise, “SaaS” style)
+st.markdown(
+    """
+    <div class="hn-card hn-card-pad">
+      <div style="font-size:1.8rem;font-weight:900;color:#0F172A;letter-spacing:-0.02em;">
+        Powerful Features for Road Safety
+      </div>
+      <div style="margin-top:0.4rem;color:#475569;font-weight:600;">
+        Advanced capability wrapped in a clean, compliance-forward experience.
+      </div>
+      <div style="margin-top:1.2rem;"></div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
+f1, f2, f3, f4 = st.columns(4, gap="large")
+features = [
+    ("📸", "Real-Time Detection", "Fast inference with optimized processing for responsive monitoring."),
+    ("🛡️", "Enhanced Safety", "Consistent enforcement support with clear violation signaling."),
+    ("⚡", "Instant Alerts", "Rate-limited audio alerts when violations are detected."),
+    ("📈", "Analytics Ready", "Structured detections for reporting, auditing, and downstream dashboards."),
+]
+for col, (icon, title, desc) in zip([f1, f2, f3, f4], features):
+    with col:
+        st.markdown(
+            f"""
+            <div class="hn-feature">
+              <div class="hn-feature-icon">{icon}</div>
+              <div class="hn-feature-title">{title}</div>
+              <div class="hn-feature-desc">{desc}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+st.markdown(
+    """
+    <div class="hn-footer">
+      HelmetNet | Streamlit UI aligned to the provided HelmetNet reference design.
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
