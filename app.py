@@ -10,10 +10,19 @@ st.set_page_config(page_title="HelmetNet", layout="wide", initial_sidebar_state=
 st.markdown(
     """
     <style>
+      /* Hide built-in Streamlit chrome */
       #MainMenu {visibility: hidden;}
       footer {visibility: hidden;}
       header {visibility: hidden;}
+
+      /* Remove Streamlit default padding so the site can be full-bleed */
+      .stApp { padding: 0 !important; }
+      [data-testid="stAppViewContainer"] { padding: 0 !important; }
+      [data-testid="stMain"] { padding: 0 !important; }
       [data-testid="stMainBlockContainer"] { padding: 0 !important; max-width: 100% !important; }
+
+      /* Ensure the embedded HTML can fully control its own layout */
+      .block-container { padding-top: 0 !important; padding-bottom: 0 !important; }
     </style>
     """,
     unsafe_allow_html=True,
