@@ -7,4 +7,6 @@ av
 streamlit-webrtc
 python-dotenv
 twilio
+numpy
+pandas
 
