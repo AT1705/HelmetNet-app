@@ -1,0 +1,13 @@
+[client]
+# Hide most Streamlit UI controls for a "pure site" feel.
+toolbarMode = "minimal"
+showSidebarNavigation = false
+showErrorDetails = "none"
+
+[theme]
+# Match the site's Tailwind palette (primary = amber-500).
+primaryColor = "#f59e0b"
+backgroundColor = "#f8fafc"
+secondaryBackgroundColor = "#ffffff"
+textColor = "#0f172a"
+font = "sans serif"
