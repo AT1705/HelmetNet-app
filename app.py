@@ -152,6 +152,12 @@ CONFIDENCE_THRESHOLD = 0.50
 FRAME_SKIP = 3
 MODELS_DIR = Path("models")
 
+DEFAULT_MODEL_PATH = "model_1.pt"   # filename only
+
+model_files = sorted([p.name for p in MODELS_DIR.glob("*.pt")])
+default_index = model_files.index(DEFAULT_MODEL_PATH) if DEFAULT_MODEL_PATH in model_files else 0
+model_choice = st.selectbox("Select Model", model_files, index=default_index)
+
 # ============================================================
 # UTILS & LOGIC
 # ============================================================
