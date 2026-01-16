@@ -400,24 +400,6 @@ load_css()
 # Render navigation
 render_navigation()
 
-# Page routing
-def main():
-    # Page selection in sidebar (hidden by default)
-    with st.sidebar:
-        st.title("Navigation")
-        page = st.radio("Go to", ["Home", "About", "Demo"], key="page_selector")
-        st.session_state.page = page.lower()
-    
-    # Import and render pages
-    if st.session_state.page == 'home':
-        from pages import home
-        home.render()
-    elif st.session_state.page == 'about':
-        from pages import about
-        about.render()
-    elif st.session_state.page == 'demo':
-        from pages import demo
-        demo.render()
 
 if __name__ == "__main__":
     main()
