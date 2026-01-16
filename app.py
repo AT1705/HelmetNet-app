@@ -1,6 +1,6 @@
 import streamlit as st
 
-from shared.style import inject_global_css
+from shared.style import inject_global_css, render_html
 from shared.components import navbar, hero_section, stats_row, section_title, feature_grid, cta_section
 
 
@@ -17,14 +17,14 @@ navbar(active="home")
 hero_section()
 stats_row()
 
-st.markdown('<div class="hn-section hn-section-slate">', unsafe_allow_html=True)
+render_html('<div class="hn-section hn-section-slate">')
 section_title(
     "Powerful Features for Road Safety",
     "Advanced technology designed to save lives and improve traffic safety compliance",
     center=True,
 )
 feature_grid()
-st.markdown("</div>", unsafe_allow_html=True)
+render_html("</div>")
 
 cta_section()
 
