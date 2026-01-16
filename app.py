@@ -1,202 +1,197 @@
-from __future__ import annotations
+The zip file are my GitHub folder where i deploy the streamlit application. I use app.py to render the index.html file. The html file is inside the pages model. Please understand the html file content. and as you can see in the html we have 3 page: Home, About, Start Demo page. Now I want to integrate my pt model inside this start demo page. Previously i build only streamlit with html rendering. I already have the functionality. Can you please extract all functionality regarding the image, video and real time detection as well the configuration setting and twilio setup as well basically all from below code to the integrate with the index html file. to make the start demo page actually functioning and run the detection model. Suggest the best way to make this happen. Basically i want you to take the functionally from below code to put into the start demo page since now the start demo page is only static and mockup like page. now we want to make this page working.
+The python code:
+"""
+AI Helmet Detection System (CSC738)
+OPTIMIZED: Live Inference + Frame Skipping + Modern Safety Theme UI
 
+UPDATED:
+- Reliable WebRTC on hotspots using Twilio Network Traversal (TURN) tokens
+- Use Streamlit Secrets (st.secrets) instead of os.environ
+- Fix model_path input + loading
+"""
+
+import streamlit as st
+from ultralytics import YOLO
+import cv2
+import numpy as np
 from pathlib import Path
 import tempfile
 import time
+from streamlit_webrtc import VideoTransformerBase, webrtc_streamer, WebRtcMode, RTCConfiguration
 
-import cv2
-import numpy as np
-import streamlit as st
-import streamlit.components.v1 as components
-from ultralytics import YOLO
-from streamlit_webrtc import (
-    VideoTransformerBase,
-    webrtc_streamer,
-    WebRtcMode,
-    RTCConfiguration,
-)
+# NEW: Twilio client for TURN credentials (ephemeral)
 from twilio.rest import Client
 
 # ============================================================
-# PATHS
-# ============================================================
-APP_DIR = Path(__file__).resolve().parent
-SITE_HTML_PATH = APP_DIR / "static" / "site" / "index.html"
-MODELS_DIR = APP_DIR / "models"
-
-# ============================================================
-# STREAMLIT CONFIG
+# PAGE CONFIG
 # ============================================================
 st.set_page_config(
-    page_title="HelmetNet",
+    page_title="AI Helmet Detection",
+    page_icon="🛵",
     layout="wide",
-    initial_sidebar_state="collapsed",
-)
-
-# Hide Streamlit chrome + full-bleed canvas
-st.markdown(
-    """
-    <style>
-      #MainMenu {visibility: hidden;}
-      footer {visibility: hidden;}
-      header {visibility: hidden;}
-
-      .stApp { padding: 0 !important; }
-      [data-testid="stAppViewContainer"] { padding: 0 !important; }
-      [data-testid="stMain"] { padding: 0 !important; }
-      [data-testid="stMainBlockContainer"] { padding: 0 !important; max-width: 100% !important; }
-      .block-container { padding-top: 0 !important; padding-bottom: 0 !important; }
-    </style>
-    """,
-    unsafe_allow_html=True,
+    initial_sidebar_state="expanded"
 )
 
 # ============================================================
-# ROUTING
+# TWILIO TURN (Network Traversal Token -> ICE servers)
 # ============================================================
-def _get_page() -> str:
-    # Streamlit 1.30+ preferred
-    try:
-        return str(st.query_params.get("page", "home")).lower()
-    except Exception:
-        qp = st.experimental_get_query_params()
-        return str(qp.get("page", ["home"])[0]).lower()
-
-
-def _set_top_query_param_js(page: str) -> str:
-    # Sets the TOP window (Streamlit) query param from inside the iframe.
-    # This is the key to make HTML navbar buttons work.
-    return f"""
-    <script>
-      (function () {{
-        function go(p) {{
-          try {{
-            // Preserve current path, just change query
-            window.top.location.search = "?page=" + encodeURIComponent(p);
-          }} catch (e) {{
-            // fallback
-            window.location.search = "?page=" + encodeURIComponent(p);
-          }}
-        }}
-
-        // Navbar buttons in index.html
-        var navHome = document.getElementById("nav-home");
-        var navAbout = document.getElementById("nav-about");
-        var navDemo = document.getElementById("nav-demo");
-        var navBrand = document.getElementById("nav-brand");
-
-        if (navHome)  navHome.addEventListener("click", function(e){{ e.preventDefault(); go("home"); }});
-        if (navAbout) navAbout.addEventListener("click", function(e){{ e.preventDefault(); go("about"); }});
-        if (navDemo)  navDemo.addEventListener("click", function(e){{ e.preventDefault(); go("demo"); }});
-        if (navBrand) navBrand.addEventListener("click", function(e){{ e.preventDefault(); go("home"); }});
-
-        // Hero CTA buttons in index.html
-        var heroTry = document.getElementById("hero-try-demo");
-        var heroLearn = document.getElementById("hero-learn-more");
-
-        if (heroTry) heroTry.addEventListener("click", function(e){{ e.preventDefault(); go("demo"); }});
-        if (heroLearn) heroLearn.addEventListener("click", function(e){{ e.preventDefault(); go("about"); }});
-
-        // Any other CTAs (safe no-op if not present)
-        var cta = document.getElementById("cta-launch-demo");
-        if (cta) cta.addEventListener("click", function(e){{ e.preventDefault(); go("demo"); }});
-      }})();
-    </script>
-    """
-
-
-# ============================================================
-# MARKETING SITE (HOME / ABOUT) — keep index.html design intact
-# ============================================================
-def render_marketing_site(active: str) -> None:
-    if not SITE_HTML_PATH.exists():
-        st.error(f"Missing site HTML at: {SITE_HTML_PATH}")
-        st.stop()
-
-    html = SITE_HTML_PATH.read_text(encoding="utf-8")
-
-    # 1) Force only one "page" visible inside the HTML (Home OR About)
-    #    Demo section in index.html remains a mock; real demo is Streamlit page.
-    inject_css = f"""
-    <style>
-      /* Show only selected section */
-      #page-home, #page-about, #page-demo {{ display: none !important; }}
-      #page-{active} {{ display: block !important; }}
-
-      /* Keep fixed nav usable; ensure content isn't hidden by it */
-      #page-home, #page-about, #page-demo {{ padding-top: 64px; }}
-    </style>
-    """
-
-    # 2) Inject JS to make HTML navbar buttons change Streamlit URL (?page=...)
-    inject_js = _set_top_query_param_js(active)
-
-    # Insert right before </head>
-    html = html.replace("</head>", inject_css + "\n" + "</head>")
-    # Insert right before </body> so DOM exists
-    html = html.replace("</body>", inject_js + "\n</body>")
-
-    # Render in iframe (reliable for Tailwind CDN + Lucide)
-    components.html(html, height=5200, scrolling=False)
-
-
-# ============================================================
-# DEMO (REAL MODEL INFERENCE) — Streamlit must own this page for WebRTC
-# ============================================================
-NO_HELMET_LABELS = {"no helmet", "no_helmet", "no-helmet", "nohelmet"}
-DEFAULT_CONFIDENCE = 0.50
-FRAME_SKIP = 3
-
-
 @st.cache_resource
 def get_twilio_ice_servers():
     """
-    Fetch STUN/TURN servers via Twilio Network Traversal (ephemeral token).
-    Falls back to public STUN if secrets are missing.
+    Gets ICE servers (STUN/TURN) from Twilio Network Traversal Service.
+    This is the most reliable method for restrictive networks (hotspots).
     """
     try:
         account_sid = st.secrets["TWILIO_ACCOUNT_SID"]
         auth_token = st.secrets["TWILIO_AUTH_TOKEN"]
         client = Client(account_sid, auth_token)
-        token = client.tokens.create()
+
+        token = client.tokens.create()  # returns ephemeral TURN creds
         ice_servers = token.ice_servers
+
+        # Safety: ensure list exists
         if not ice_servers:
+            # fallback to STUN only
             return [{"urls": ["stun:stun.l.google.com:19302"]}]
+
         return ice_servers
-    except Exception:
+    except Exception as e:
+        # If Twilio fails, fallback to STUN only (may fail on hotspots)
+        st.sidebar.error(f"TURN setup error: {e}")
         return [{"urls": ["stun:stun.l.google.com:19302"]}]
 
 
+ICE_SERVERS = get_twilio_ice_servers()
+RTC_CONFIGURATION = RTCConfiguration({"iceServers": ICE_SERVERS})
+
+# ============================================================
+# SAFETY THEME CSS
+# ============================================================
+st.markdown("""
+<style>
+    .block-container { padding-top: 1.5rem !important; }
+    .main-header {
+        font-size: 2.5rem; font-weight: 800; color: var(--text-color);
+        text-align: center; text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+    }
+    .sub-header {
+        text-align: center; font-size: 1.1rem; color: var(--text-color);
+        opacity: 0.8; font-weight: 500; margin-bottom: 1.5rem;
+    }
+    h2 {
+        color: var(--text-color) !important; font-weight: 700 !important;
+        border-bottom: 3px solid #FFD700; padding-bottom: 0.5rem;
+    }
+    .stTabs [data-baseweb="tab-list"] {
+        background: var(--secondary-background-color); padding: 0.5rem;
+        border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 50px; border-radius: 8px; color: var(--text-color);
+        font-weight: 600; padding: 0 1.5rem;
+    }
+    .stTabs [aria-selected="true"] {
+        background: #FFD700 !important; color: #1E3A8A !important;
+    }
+    .alert-danger {
+        background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+        color: white; padding: 20px; border-radius: 12px;
+        text-align: center; font-size: 1.3rem; font-weight: 700;
+        animation: pulse 2s infinite; margin: 20px 0;
+        box-shadow: 0 4px 6px rgba(239,68,68,0.3);
+        border: 3px solid #FCA5A5;
+    }
+    .alert-success {
+        background: linear-gradient(135deg, #22C55E 0%, #16A34A 100%);
+        color: white; padding: 20px; border-radius: 12px;
+        text-align: center; font-size: 1.3rem; font-weight: 700;
+        margin: 20px 0; box-shadow: 0 4px 6px rgba(34,197,94,0.3);
+        border: 3px solid #86EFAC;
+    }
+    @keyframes pulse {0%, 100% {opacity: 1; transform: scale(1);} 50% {opacity: 0.85; transform: scale(1.02);}}
+    .stButton > button {
+        background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+        color: #1E3A8A; border: none; border-radius: 10px;
+        padding: 0.6rem 2rem; font-weight: 700;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        color: #1E3A8A;
+    }
+    .stDownloadButton > button {
+        background: linear-gradient(135deg, #1E3A8A 0%, #3B82F6 100%);
+        color: white; border: none;
+    }
+    [data-testid="stMetricValue"] {
+        font-size: 1.8rem !important; font-weight: 700 !important; color: var(--text-color);
+    }
+    [data-testid="metric-container"] {
+        background: var(--secondary-background-color); padding: 1rem;
+        border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        border-left: 4px solid #FFD700;
+    }
+    [data-testid="stFileUploader"] {
+        background: var(--secondary-background-color); padding: 1.5rem;
+        border-radius: 10px; border: 2px dashed #FFD700;
+    }
+    audio {display: none;}
+    .info-box {
+        background: rgba(59, 130, 246, 0.1); padding: 1rem;
+        border-radius: 10px; border-left: 4px solid #1E3A8A;
+        margin: 1rem 0; color: var(--text-color);
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# ============================================================
+# CONFIGURATION
+# ============================================================
+NO_HELMET_LABELS = ["no helmet", "no_helmet", "no-helmet"]
+CONFIDENCE_THRESHOLD = 0.50
+FRAME_SKIP = 3
+DEFAULT_MODEL_PATH = "best.pt"
+
+# ============================================================
+# UTILS & LOGIC
+# ============================================================
 @st.cache_resource
-def load_model(model_path: str) -> YOLO:
-    p = Path(model_path)
-    if p.exists():
-        return YOLO(str(p))
+def load_model(path):
+    try:
+        if Path(path).exists():
+            model = YOLO(path)
+            st.sidebar.success("✅ Model loaded")
+            return model
+        st.sidebar.warning("⚠️ Model not found, using YOLOv8n")
+        return YOLO("yolov8n.pt")
+    except Exception as e:
+        st.sidebar.error(f"Model load error: {e}")
+        return None
 
-    p2 = MODELS_DIR / model_path
-    if p2.exists():
-        return YOLO(str(p2))
+def play_alarm():
+    if 'last_alarm' not in st.session_state:
+        st.session_state.last_alarm = 0
+    if time.time() - st.session_state.last_alarm > 3:
+        if Path("alert.mp3").exists():
+            st.audio("alert.mp3", format="audio/mp3", autoplay=True)
+        st.session_state.last_alarm = time.time()
 
-    return YOLO("yolov8n.pt")
-
-
-def draw_boxes(frame: np.ndarray, detections: list[dict]) -> np.ndarray:
+def draw_boxes(frame, detections):
     img = frame.copy()
     for det in detections:
-        x1, y1, x2, y2 = map(int, det["bbox"])
-        cls = det["class"]
-        conf = det["confidence"]
-        color = (0, 0, 139) if cls in NO_HELMET_LABELS else (0, 100, 0)
-        label = f"{cls} {conf:.2f}"
+        x1, y1, x2, y2 = map(int, det['bbox'])
+        color = (0, 0, 139) if det['class'] in NO_HELMET_LABELS else (0, 100, 0)
+        label = f"{det['class']} {det['confidence']:.2f}"
+
         cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
         (w, h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
         cv2.rectangle(img, (x1, y1 - 20), (x1 + w, y1), color, -1)
         cv2.putText(img, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
     return img
 
-
-def detect_frame(frame: np.ndarray, model: YOLO, conf_threshold: float):
-    results = model.predict(frame, conf=conf_threshold, imgsz=640, verbose=False, device="cpu")
+def detect_frame(frame, model, conf_threshold):
+    results = model.predict(frame, conf=conf_threshold, imgsz=640, verbose=False, device='cpu')
 
     helmet_count = 0
     no_helmet_count = 0
@@ -204,11 +199,11 @@ def detect_frame(frame: np.ndarray, model: YOLO, conf_threshold: float):
 
     for box in results[0].boxes:
         cls_id = int(box.cls)
-        cls_name = str(model.names[cls_id]).lower()
+        cls_name = model.names[cls_id].lower()
         conf = float(box.conf)
         bbox = box.xyxy[0].cpu().numpy().tolist()
 
-        detections.append({"class": cls_name, "confidence": conf, "bbox": bbox})
+        detections.append({'class': cls_name, 'confidence': conf, 'bbox': bbox})
 
         if cls_name in NO_HELMET_LABELS:
             no_helmet_count += 1
@@ -216,35 +211,25 @@ def detect_frame(frame: np.ndarray, model: YOLO, conf_threshold: float):
             helmet_count += 1
 
     return detections, {
-        "helmet_count": helmet_count,
-        "no_helmet_count": no_helmet_count,
-        "alert": no_helmet_count > 0,
+        'helmet_count': helmet_count,
+        'no_helmet_count': no_helmet_count,
+        'alert': no_helmet_count > 0
     }
 
-
-def play_alarm():
-    # throttle alarm
-    if "last_alarm" not in st.session_state:
-        st.session_state.last_alarm = 0.0
-    if time.time() - st.session_state.last_alarm > 3:
-        # If you have alert.mp3 in repo root, it will play.
-        alert = APP_DIR / "alert.mp3"
-        if alert.exists():
-            st.audio(str(alert), format="audio/mp3", autoplay=True)
-        st.session_state.last_alarm = time.time()
-
-
+# ============================================================
+# WEBRTC CLASS
+# ============================================================
 class HelmetTransformer(VideoTransformerBase):
     def __init__(self):
-        self.model: YOLO | None = None
-        self.conf: float = DEFAULT_CONFIDENCE
-        self.helmet: int = 0
-        self.no_helmet: int = 0
-        self.frame_cnt: int = 0
-        self.last_dets: list[dict] = []
-        self.alert: bool = False
+        self.model = None
+        self.conf = 0.25
+        self.helmet = 0
+        self.no_helmet = 0
+        self.frame_cnt = 0
+        self.last_dets = []
+        self.alert = False
 
-    def set_model(self, model: YOLO, conf: float):
+    def set_model(self, model, conf):
         self.model = model
         self.conf = conf
 
@@ -259,308 +244,226 @@ class HelmetTransformer(VideoTransformerBase):
             try:
                 detections, stats = detect_frame(img, self.model, self.conf)
                 self.last_dets = detections
-                self.helmet = stats["helmet_count"]
-                self.no_helmet = stats["no_helmet_count"]
-                self.alert = stats["alert"]
+                self.helmet = stats['helmet_count']
+                self.no_helmet = stats['no_helmet_count']
+                self.alert = stats['alert']
             except Exception:
                 pass
 
         return draw_boxes(img, self.last_dets)
 
+# ============================================================
+# SIDEBAR
+# ============================================================
+with st.sidebar:
+    st.markdown("### ⚙️ Configuration")
+    st.markdown("---")
 
-def inject_demo_css():
-    """
-    Tighten spacing + align with your Tailwind marketing design.
-    This avoids the 'messy' look (no sidebar, consistent max width, clean cards).
-    """
-    st.markdown(
-        """
-        <style>
-          /* Full-bleed, but with a centered container */
-          [data-testid="stMainBlockContainer"] { padding: 0 !important; max-width: 100% !important; }
-          body { background: #f8fafc; }
+    st.markdown("**🤖 Model Settings**")
+    model_path = st.text_input("Model Path", DEFAULT_MODEL_PATH)
 
-          /* Spacer for fixed nav */
-          .hn-topspacer { height: 64px; }
+    confidence_threshold = st.slider("🎯 Confidence", 0.1, 1.0, CONFIDENCE_THRESHOLD, 0.05)
 
-          /* Container + cards */
-          .hn-wrap { max-width: 80rem; margin: 0 auto; padding: 2rem 1rem; }
-          .hn-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 0.75rem; box-shadow: 0 8px 16px rgba(15,23,42,0.08); overflow: hidden; }
-          .hn-card-h { padding: 1rem 1.25rem; border-bottom: 1px solid #e2e8f0; font-weight: 800; color: #0f172a; }
-          .hn-card-b { padding: 1.25rem; }
+    st.markdown("---")
+    st.markdown("**🌐 WebRTC / TURN Debug**")
+    st.write("ICE servers loaded:", len(ICE_SERVERS))
+    # Optional: show first server for sanity (not credentials)
+    if len(ICE_SERVERS) > 0 and "urls" in ICE_SERVERS[0]:
+        st.write("First ICE urls:", ICE_SERVERS[0]["urls"])
 
-          /* Reduce Streamlit label clutter */
-          label { font-weight: 700 !important; color: #334155 !important; }
-          .stSlider label, .stSelectbox label { font-size: 0.85rem !important; }
+    st.markdown("---")
+    st.markdown("**📊 Session Stats**")
+    if 'total_detections' not in st.session_state:
+        st.session_state.total_detections = 0
+    st.metric("Total Detections", st.session_state.total_detections)
 
-          /* Reduce default vertical gaps */
-          div[data-testid="stVerticalBlock"] > div { gap: 0.85rem !important; }
-
-          /* Buttons */
-          .stButton > button {
-            background: #f59e0b !important;
-            color: #0f172a !important;
-            border: none !important;
-            border-radius: 0.75rem !important;
-            font-weight: 800 !important;
-            padding: 0.85rem 1rem !important;
-          }
-          .stButton > button:hover { background: #fbbf24 !important; transform: translateY(-1px); }
-
-          /* Tabs */
-          .stTabs [data-baseweb="tab-list"] {
-            background: #ffffff;
-            padding: 0.4rem;
-            border-radius: 0.9rem;
-            border: 1px solid #e2e8f0;
-            box-shadow: 0 6px 14px rgba(15,23,42,0.06);
-          }
-          .stTabs [data-baseweb="tab"] { height: 48px; border-radius: 0.75rem; font-weight: 750; }
-          .stTabs [aria-selected="true"] { background: #f59e0b !important; color: #0f172a !important; }
-
-          /* Uploader */
-          [data-testid="stFileUploader"] { background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 0.75rem; padding: 1rem; }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def render_demo_nav():
-    """
-    Streamlit-native nav for Demo.
-    (We keep marketing nav inside index.html for Home/About, but Demo needs Streamlit UI anyway.)
-    """
-    st.markdown(
-        """
-        <div style="position:fixed; top:0; left:0; right:0; z-index:999;
-                    background:rgba(255,255,255,0.95); backdrop-filter: blur(6px);
-                    border-bottom:1px solid #e2e8f0; box-shadow:0 2px 10px rgba(15,23,42,0.06);">
-          <div style="max-width:80rem; margin:0 auto; padding:0 1rem; height:64px;
-                      display:flex; align-items:center; justify-content:space-between;">
-            <a href="?page=home" style="text-decoration:none;">
-              <span style="font-weight:800; font-size:1.25rem; color:#0f172a;">HelmetNet</span>
-            </a>
-            <div style="display:flex; align-items:center; gap:1.75rem;">
-              <a href="?page=home" style="text-decoration:none; font-weight:500; color:#475569;">Home</a>
-              <a href="?page=about" style="text-decoration:none; font-weight:500; color:#475569;">About</a>
-              <a href="?page=demo" style="text-decoration:none; font-weight:800; background:#f59e0b; color:#0f172a;
-                                        padding:0.6rem 1.1rem; border-radius:0.75rem;
-                                        box-shadow:0 6px 12px rgba(15,23,42,0.10);">Start Demo</a>
-            </div>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def render_demo_page():
-    inject_demo_css()
-    render_demo_nav()
-
-    # spacer below fixed nav
-    st.markdown("<div class='hn-topspacer'></div>", unsafe_allow_html=True)
-
-    # Hero (matches the marketing tone)
-    st.markdown(
-        """
-        <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-                    border-bottom: 1px solid #334155; padding: 2.25rem 1rem;">
-          <div style="max-width:80rem; margin:0 auto;">
-            <h1 style="font-size:2.25rem; font-weight:900; color:white; margin:0 0 0.35rem 0;">
-              HelmetNet Detection System
-            </h1>
-            <p style="color:#cbd5e1; font-size:1.05rem; margin:0;">
-              AI-powered helmet compliance detection (Image, Video, Real-Time WebRTC)
-            </p>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    # Main layout
-    st.markdown("<div class='hn-wrap'>", unsafe_allow_html=True)
-    col_cfg, col_main = st.columns([1, 2.4], gap="large")
-
-    # LEFT: Configuration
-    with col_cfg:
-        st.markdown("<div class='hn-card'><div class='hn-card-h'>Configuration</div><div class='hn-card-b'>", unsafe_allow_html=True)
-
-        model_files = sorted([p.name for p in MODELS_DIR.glob("*.pt")])
-        if not model_files:
-            model_files = ["best.pt"]
-
-        st.markdown("<div style='font-size:0.85rem; font-weight:800; color:#334155; margin-bottom:0.25rem;'>Model Settings</div>", unsafe_allow_html=True)
-        model_choice = st.selectbox("Model", options=model_files, index=0)
-
-        conf = st.slider("Confidence Threshold", 0.10, 1.00, DEFAULT_CONFIDENCE, 0.05)
-
-        if "total_detections" not in st.session_state:
-            st.session_state.total_detections = 0
-
-        st.markdown("<div style='margin-top:1rem; padding-top:1rem; border-top:1px solid #e2e8f0;'>", unsafe_allow_html=True)
-        st.markdown("<div style='font-size:0.85rem; font-weight:800; color:#334155; margin-bottom:0.25rem;'>Session Stats</div>", unsafe_allow_html=True)
-        st.metric("Total Detections", st.session_state.total_detections)
-        st.markdown("</div>", unsafe_allow_html=True)
-
-        ice_servers = get_twilio_ice_servers()
-        st.caption(f"ICE servers loaded: {len(ice_servers)}")
-
-        st.markdown("</div></div></div>", unsafe_allow_html=True)
-
-    # RIGHT: Content
-    with col_main:
-        model = load_model(model_choice)
-
-        tab1, tab2, tab3 = st.tabs(["Image Detection", "Video Detection", "Real Time Detection"])
-
-        # TAB 1: Image
-        with tab1:
-            st.markdown("<div class='hn-card'><div class='hn-card-h'>Upload an Image</div><div class='hn-card-b'>", unsafe_allow_html=True)
-
-            img_file = st.file_uploader("Choose image", type=["jpg", "jpeg", "png", "bmp"], key="img")
-
-            run = st.button("Run Detection", use_container_width=True)
-
-            if img_file is not None and run:
-                file_bytes = np.asarray(bytearray(img_file.read()), dtype=np.uint8)
-                frame = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-
-                with st.spinner("Analyzing..."):
-                    dets, stats = detect_frame(frame, model, conf)
-                    annotated = draw_boxes(frame, dets)
-
-                st.session_state.total_detections += len(dets)
-
-                c1, c2 = st.columns(2, gap="large")
-                with c1:
-                    st.markdown("**Original**")
-                    st.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), use_container_width=True)
-                with c2:
-                    st.markdown("**Result**")
-                    st.image(cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB), use_container_width=True)
-
-                m1, m2, m3 = st.columns(3)
-                m1.metric("Helmets", stats["helmet_count"])
-                m2.metric("Violations", stats["no_helmet_count"])
-                m3.metric("Total Objects", len(dets))
-
-                if stats["alert"]:
-                    st.error("NO HELMET DETECTED")
-                    play_alarm()
-                else:
-                    st.success("All Safe")
-
-                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
-                cv2.imwrite(tmp.name, annotated)
-                with open(tmp.name, "rb") as f:
-                    st.download_button("Download Result", f, f"result_{img_file.name}", "image/jpeg")
-
-            st.markdown("</div></div>", unsafe_allow_html=True)
-
-        # TAB 2: Video
-        with tab2:
-            st.markdown("<div class='hn-card'><div class='hn-card-h'>Upload a Video</div><div class='hn-card-b'>", unsafe_allow_html=True)
-
-            vid_file = st.file_uploader("Choose video", type=["mp4", "avi", "mov", "mkv"], key="vid")
-
-            if vid_file is not None and st.button("Start Live Inference", type="primary"):
-                tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
-                tfile.write(vid_file.read())
-
-                cap = cv2.VideoCapture(tfile.name)
-                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
-                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
-                fps = int(cap.get(cv2.CAP_PROP_FPS) or 25)
-                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-
-                outfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
-                out = cv2.VideoWriter(outfile.name, cv2.VideoWriter_fourcc(*"mp4v"), fps, (width, height))
-
-                st_frame = st.empty()
-                st_progress = st.progress(0)
-
-                frame_count = 0
-                cached_dets: list[dict] = []
-                current_stats = {"helmet_count": 0, "no_helmet_count": 0, "alert": False}
-
-                while cap.isOpened():
-                    ret, frame = cap.read()
-                    if not ret:
-                        break
-
-                    frame_count += 1
-                    if frame_count % FRAME_SKIP == 0 or frame_count == 1:
-                        cached_dets, current_stats = detect_frame(frame, model, conf)
-
-                    annotated = draw_boxes(frame, cached_dets)
-                    out.write(annotated)
-
-                    st_frame.image(
-                        cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB),
-                        caption=(f"Processing {frame_count}/{total_frames}" if total_frames else f"Processing {frame_count}"),
-                        use_container_width=True,
-                    )
-                    if total_frames:
-                        st_progress.progress(min(frame_count / total_frames, 1.0))
-
-                    if current_stats["alert"]:
-                        play_alarm()
-
-                cap.release()
-                out.release()
-
-                st.session_state.total_detections += int(current_stats["helmet_count"] + current_stats["no_helmet_count"])
-                st.success("Processing complete")
-
-                with open(outfile.name, "rb") as f:
-                    st.download_button("Download Result Video", f, "result.mp4", "video/mp4")
-
-            st.markdown("</div></div>", unsafe_allow_html=True)
-
-        # TAB 3: Real-Time WebRTC
-        with tab3:
-            st.markdown("<div class='hn-card'><div class='hn-card-h'>Real-Time Live Detection (WebRTC)</div><div class='hn-card-b'>", unsafe_allow_html=True)
-
-            ice_servers = get_twilio_ice_servers()
-            rtc_conf = RTCConfiguration({"iceServers": ice_servers})
-
-            ctx = webrtc_streamer(
-                key="helmet-live",
-                mode=WebRtcMode.SENDRECV,
-                rtc_configuration=rtc_conf,
-                video_processor_factory=HelmetTransformer,
-                async_processing=True,
-            )
-
-            if ctx.video_processor:
-                ctx.video_processor.set_model(model, conf)
-
-                c1, c2 = st.columns(2)
-                c1.metric("Helmets", ctx.video_processor.helmet)
-                c2.metric("Violations", ctx.video_processor.no_helmet)
-
-                if ctx.video_processor.alert:
-                    st.error("NO HELMET DETECTED")
-                    play_alarm()
-                else:
-                    st.success("Area Secure")
-
-            st.markdown("</div></div>", unsafe_allow_html=True)
-
-    st.markdown("</div>", unsafe_allow_html=True)  # close hn-wrap
-
+    st.markdown("---")
 
 # ============================================================
-# MAIN
+# LOAD MODEL
 # ============================================================
-page = _get_page()
+model = load_model(model_path)
+if not model:
+    st.sidebar.warning(f"⚠️ Could not load {model_path}, using default YOLOv8n")
+    model = YOLO("yolov8n.pt")
 
-if page == "demo":
-    render_demo_page()
-elif page in {"home", "about"}:
-    render_marketing_site(page)
-else:
-    render_marketing_site("home")
+# ============================================================
+# MAIN APP UI
+# ============================================================
+st.markdown('<h1 class="main-header">🛵 HelmetNet </h1>', unsafe_allow_html=True)
+st.markdown('<p class="sub-header">AI Helmet Detection System</p>', unsafe_allow_html=True)
+
+tab1, tab2, tab3 = st.tabs(["Image Detection", "Video Detection", "Real-Time Detection"])
+
+# --- TAB 1: IMAGE DETECTION ---
+with tab1:
+    st.markdown("### 📸 Upload an Image")
+
+    col1, col2 = st.columns([2, 1])
+    with col2:
+        st.markdown(
+            '<div class="info-box"><strong>💡 Tips:</strong><br>• Clear, well-lit images<br>• JPG, PNG, BMP</div>',
+            unsafe_allow_html=True
+        )
+
+    with col1:
+        img_file = st.file_uploader(
+            "Choose image",
+            ["jpg", "jpeg", "png", "bmp"],
+            key="img",
+            label_visibility="collapsed"
+        )
+
+    if img_file:
+        file_bytes = np.asarray(bytearray(img_file.read()), dtype=np.uint8)
+        frame = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+
+        with st.spinner("🔍 Analyzing..."):
+            dets, stats = detect_frame(frame, model, confidence_threshold)
+            annotated = draw_boxes(frame, dets)
+            st.session_state.total_detections += len(dets)
+
+        annotated_rgb = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
+
+        c1, c2 = st.columns(2, gap="large")
+        with c1:
+            st.markdown("**📷 Original**")
+            st.image(img_file, use_container_width=True)
+        with c2:
+            st.markdown("**🎯 Result**")
+            st.image(annotated_rgb, use_container_width=True)
+
+        if stats['alert']:
+            st.markdown('<div class="alert-danger">⚠️ NO HELMET DETECTED!</div>', unsafe_allow_html=True)
+            play_alarm()
+        else:
+            st.markdown('<div class="alert-success">✅ All Safe!</div>', unsafe_allow_html=True)
+
+        st.markdown("### 📊 Summary")
+        m1, m2, m3 = st.columns(3)
+        m1.metric("🟢 Helmets", stats['helmet_count'])
+        m2.metric("🔴 No Helmets", stats['no_helmet_count'])
+        m3.metric("📝 Total Objects", len(dets))
+
+        temp_img = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg')
+        cv2.imwrite(temp_img.name, annotated)
+        with open(temp_img.name, 'rb') as f:
+            st.download_button("📥 Download Result", f, f"result_{img_file.name}", "image/jpeg")
+
+# --- TAB 2: VIDEO DETECTION ---
+with tab2:
+    st.markdown("### 🎥 Upload a Video")
+
+    col1, col2 = st.columns([2, 1])
+    with col2:
+        st.markdown(
+            '<div class="info-box"><strong>💡 Fast Mode:</strong><br>• Optimized frame skipping<br>• Live inference preview<br>• MP4, AVI, MOV</div>',
+            unsafe_allow_html=True
+        )
+
+    with col1:
+        vid_file = st.file_uploader(
+            "Choose video",
+            ["mp4", "avi", "mov", "mkv"],
+            key="vid",
+            label_visibility="collapsed"
+        )
+
+    if vid_file:
+        st.markdown("### 🎬 Processing")
+        if st.button("▶️ Start Live Inference", type="primary"):
+            tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+            tfile.write(vid_file.read())
+
+            cap = cv2.VideoCapture(tfile.name)
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            fps = int(cap.get(cv2.CAP_PROP_FPS))
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+            outfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+            out = cv2.VideoWriter(outfile.name, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
+
+            st_frame = st.empty()
+            st_metrics = st.empty()
+            st_progress = st.progress(0)
+
+            frame_count = 0
+            cached_detections = []
+            current_stats = {'helmet_count': 0, 'no_helmet_count': 0, 'alert': False}
+
+            while cap.isOpened():
+                ret, frame = cap.read()
+                if not ret:
+                    break
+
+                frame_count += 1
+
+                if frame_count % FRAME_SKIP == 0 or frame_count == 1:
+                    cached_detections, current_stats = detect_frame(frame, model, confidence_threshold)
+
+                annotated = draw_boxes(frame, cached_detections)
+                out.write(annotated)
+
+                if current_stats['alert']:
+                    play_alarm()
+
+                st_frame.image(
+                    cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB),
+                    caption=f"Processing Frame {frame_count}/{total_frames}",
+                    use_container_width=True
+                )
+
+                with st_metrics.container():
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("🟢 Helmets", current_stats['helmet_count'])
+                    c2.metric("🔴 Violations", current_stats['no_helmet_count'])
+                    c3.metric("⏱️ Progress", f"{int(frame_count/total_frames*100)}%")
+
+                st_progress.progress(frame_count / total_frames)
+
+            cap.release()
+            out.release()
+
+            st.success("✅ Processing Complete!")
+            st.session_state.total_detections += (current_stats['helmet_count'] + current_stats['no_helmet_count'])
+
+            with open(outfile.name, 'rb') as f:
+                st.download_button("📥 Download Result", f, "result.mp4", "video/mp4")
+
+# --- TAB 3: REAL-TIME DETECTION (WEBRTC) ---
+with tab3:
+    st.markdown("### 📱 Real-Time Live Detection")
+    st.markdown("""
+    <div class="info-box">
+    <strong>🎥 Live Webcam:</strong><br>
+    • Click "START" below<br>
+    • Uses optimized frame skipping for smoother performance<br>
+    • Works on mobile & desktop (TURN enabled for hotspots)
+    </div>
+    """, unsafe_allow_html=True)
+
+    ctx = webrtc_streamer(
+        key="helmet-live",
+        mode=WebRtcMode.SENDRECV,
+        rtc_configuration=RTC_CONFIGURATION,
+        video_processor_factory=HelmetTransformer,
+        async_processing=True,
+    )
+
+    if ctx.video_processor:
+        ctx.video_processor.set_model(model, confidence_threshold)
+
+        st.markdown("### 📊 Live Stats")
+        m1, m2 = st.columns(2)
+        m1.metric("🟢 Helmets", ctx.video_processor.helmet)
+        m2.metric("🔴 Violations", ctx.video_processor.no_helmet)
+
+        if ctx.video_processor.alert:
+            st.markdown('<div class="alert-danger">⚠️ NO HELMET DETECTED!</div>', unsafe_allow_html=True)
+            play_alarm()
+        else:
+            st.markdown('<div class="alert-success">✅ Area Secure</div>', unsafe_allow_html=True)
+
+st.markdown("---")
+st.caption("🚀 HelmetNet App | © 2025")
