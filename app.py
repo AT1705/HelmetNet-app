@@ -34,7 +34,7 @@ from streamlit_webrtc import (
 # ============================================================
 st.set_page_config(
     page_title="AI Helmet Detection",
-    page_icon="🛵",
+    page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
