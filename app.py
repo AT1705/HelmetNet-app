@@ -731,8 +731,41 @@ with tab2:
                 st.download_button("📥 Download Result", f, "result.mp4", "video/mp4")
 
 # --- TAB 3: REAL-TIME DETECTION (WEBRTC) ---
-with tab3: st.markdown("### 📱 Real-Time Live Detection") st.markdown(""" <div class="info-box"> <strong>🎥 Live Webcam:</strong><br> • Click "START" below<br> • Uses optimized frame skipping for smoother performance<br> • Works on mobile & desktop (TURN enabled for hotspots) </div> """, unsafe_allow_html=True) ctx = webrtc_streamer( key="helmet-live", mode=WebRtcMode.SENDRECV, rtc_configuration=RTC_CONFIGURATION, video_processor_factory=HelmetTransformer, async_processing=True, ) if ctx.video_processor: ctx.video_processor.set_model(model, confidence_threshold) st.markdown("### 📊 Live Stats") m1, m2 = st.columns(2) m1.metric("🟢 Helmets", ctx.video_processor.helmet) m2.metric("🔴 Violations", ctx.video_processor.no_helmet) if ctx.video_processor.alert: st.markdown('<div class="alert-danger">⚠️ NO HELMET DETECTED!</div>', unsafe_allow_html=True) play_alarm() else: st.markdown('<div class="alert-success">✅ Area Secure</div>', unsafe_allow_html=True)
-                )
+with tab3:
+    st.markdown("### 📱 Real-Time Live Detection")
+    st.markdown("""
+    <div class="info-box">
+    <strong>🎥 Live Webcam:</strong><br>
+    • Click "START" below<br>
+    • Uses optimized frame skipping for smoother performance<br>
+    • Works on mobile & desktop
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Webrtc Logic from app_2 wrapped in UI
+    ctx = webrtc_streamer(
+        key="helmet-live",
+        mode=WebRtcMode.SENDRECV,
+        rtc_configuration=RTCConfiguration({"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}),
+        video_processor_factory=HelmetTransformer,
+        async_processing=True,
+    )
+    
+    if ctx.video_processor:
+        ctx.video_processor.set_model(model, confidence_threshold)
+        
+        st.markdown("### 📊 Live Stats")
+        m1, m2 = st.columns(2)
+        
+        # These will update automatically via Streamlit re-runs triggered by WebRTC
+        m1.metric("🟢 Helmets", ctx.video_processor.helmet)
+        m2.metric("🔴 Violations", ctx.video_processor.no_helmet)
+        
+        if ctx.video_processor.alert:
+            st.markdown('<div class="alert-danger">⚠️ NO HELMET DETECTED!</div>', unsafe_allow_html=True)
+            play_alarm()
+        else:
+            st.markdown('<div class="alert-success">✅ Area Secure</div>', unsafe_allow_html=True)
 
 st.markdown("---")
 st.caption("🚀 HelmetNet App | © 2025")
