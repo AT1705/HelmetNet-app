@@ -1,1 +1,0 @@
-# Make pages a package
