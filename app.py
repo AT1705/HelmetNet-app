@@ -7,9 +7,9 @@ POC UPGRADE (Authority-friendly Dashboard):
 - Every detection logs automatically (timestamp + location + result)
 - Dashboard includes:
   1) Simple KPI cards (easy wording)
-  2) Malaysia hotspot map (bigger/redder = more 'no helmet' detected)
-  3) Top hotspots charts + ranked table
-  4) Clear recommendation panel (color-coded) for enforcement actions
+  2) Malaysia hotspot map (bigger/redder = more violations)
+  3) Top hotspot ranking table
+  4) Simple trend charts
   5) Recent violations list
 - Optional: Create dummy logs for demo (one click)
 """
@@ -96,13 +96,12 @@ ICE_SERVERS = get_twilio_ice_servers()
 RTC_CONFIGURATION = RTCConfiguration({"iceServers": ICE_SERVERS})
 
 # ============================================================
-# GLOBAL CSS (Theme + Recommendation Cards)
+# SAFETY THEME CSS + TABLE STYLES
 # ============================================================
 st.markdown(
     """
 <style>
     .block-container { padding-top: 1.5rem !important; }
-
     .main-header {
         font-size: 2.5rem; font-weight: 800; color: var(--text-color);
         text-align: center; text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
@@ -126,27 +125,26 @@ st.markdown(
     .stTabs [aria-selected="true"] {
         background: #FFD700 !important; color: #1E3A8A !important;
     }
-
     .alert-danger {
         background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
         color: white; padding: 20px; border-radius: 12px;
-        text-align: center; font-size: 1.3rem; font-weight: 800;
-        margin: 20px 0;
+        text-align: center; font-size: 1.3rem; font-weight: 700;
+        animation: pulse 2s infinite; margin: 20px 0;
         box-shadow: 0 4px 6px rgba(239,68,68,0.3);
         border: 3px solid #FCA5A5;
     }
     .alert-success {
         background: linear-gradient(135deg, #22C55E 0%, #16A34A 100%);
         color: white; padding: 20px; border-radius: 12px;
-        text-align: center; font-size: 1.3rem; font-weight: 800;
+        text-align: center; font-size: 1.3rem; font-weight: 700;
         margin: 20px 0; box-shadow: 0 4px 6px rgba(34,197,94,0.3);
         border: 3px solid #86EFAC;
     }
-
+    @keyframes pulse {0%, 100% {opacity: 1; transform: scale(1);} 50% {opacity: 0.85; transform: scale(1.02);} }
     .stButton > button {
         background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
         color: #1E3A8A; border: none; border-radius: 10px;
-        padding: 0.6rem 2rem; font-weight: 800;
+        padding: 0.6rem 2rem; font-weight: 700;
         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         width: 100%;
     }
@@ -159,94 +157,33 @@ st.markdown(
         background: linear-gradient(135deg, #1E3A8A 0%, #3B82F6 100%);
         color: white; border: none;
     }
-
+    [data-testid="stMetricValue"] {
+        font-size: 1.8rem !important; font-weight: 700 !important; color: var(--text-color);
+    }
     [data-testid="metric-container"] {
         background: var(--secondary-background-color); padding: 1rem;
         border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         border-left: 4px solid #FFD700;
     }
-    [data-testid="stMetricValue"] {
-        font-size: 1.8rem !important; font-weight: 800 !important; color: var(--text-color);
+    [data-testid="stFileUploader"] {
+        background: var(--secondary-background-color); padding: 1.5rem;
+        border-radius: 10px; border: 2px dashed #FFD700;
     }
-
     audio {display: none;}
-
     .info-box {
-        background: rgba(59, 130, 246, 0.10); padding: 1rem;
+        background: rgba(59, 130, 246, 0.1); padding: 1rem;
         border-radius: 10px; border-left: 4px solid #1E3A8A;
         margin: 1rem 0; color: var(--text-color);
     }
 
-    /* Recommendation cards */
-    .rec-wrap{
-        display:grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 14px;
-        margin-top: 10px;
-    }
-    @media (max-width: 1100px){
-        .rec-wrap{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    }
-    @media (max-width: 700px){
-        .rec-wrap{ grid-template-columns: 1fr; }
-    }
-    .rec-card{
-        border-radius: 14px;
-        padding: 14px 14px;
-        border: 1px solid rgba(226,232,240,1);
-        box-shadow: 0 8px 18px rgba(15,23,42,0.06);
-        background: white;
-    }
-    .rec-card.high{
-        border-left: 10px solid #DC2626;
-        background: linear-gradient(180deg, rgba(254,226,226,0.70), rgba(255,255,255,1));
-    }
-    .rec-card.med{
-        border-left: 10px solid #D97706;
-        background: linear-gradient(180deg, rgba(254,243,199,0.70), rgba(255,255,255,1));
-    }
-    .rec-card.low{
-        border-left: 10px solid #16A34A;
-        background: linear-gradient(180deg, rgba(220,252,231,0.70), rgba(255,255,255,1));
-    }
-    .rec-card.data{
-        border-left: 10px solid #2563EB;
-        background: linear-gradient(180deg, rgba(219,234,254,0.70), rgba(255,255,255,1));
-    }
-    .rec-title{
-        font-weight: 900;
-        font-size: 1.05rem;
-        color: #0f172a;
-        margin-bottom: 6px;
-        line-height: 1.25;
-    }
-    .rec-meta{
-        display:flex;
-        flex-wrap:wrap;
-        gap: 8px;
-        margin: 8px 0 10px 0;
-    }
-    .rec-pill{
-        font-weight: 900;
-        font-size: 0.78rem;
-        padding: 6px 10px;
-        border-radius: 999px;
-        border: 1px solid rgba(226,232,240,1);
-        background: rgba(248,250,252,1);
-        color: #334155;
-    }
-    .rec-body{
-        color: #0f172a;
-        font-weight: 650;
-        font-size: 0.95rem;
-        line-height: 1.35;
-    }
-    .rec-foot{
-        margin-top: 10px;
-        color: #475569;
-        font-size: 0.85rem;
-        font-weight: 650;
-    }
+    /* Fancy result table styles */
+    .hn-card { background: white; border: 1px solid rgba(226,232,240,1); border-radius: 14px;
+              box-shadow: 0 10px 24px rgba(15,23,42,0.06); overflow: hidden; margin-top: 1rem; }
+    .hn-table { width: 100%; border-collapse: collapse; min-width: 760px; background: white; }
+    .hn-table thead th { text-align: left; padding: 12px; font-size: 0.8rem; color: #475569; font-weight: 900;
+                         border-top: 1px solid #eef2f7; border-bottom: 1px solid #eef2f7; background: white; }
+    .hn-table tbody td { padding: 14px 12px; border-top: 1px solid #eef2f7; vertical-align: middle;
+                         font-variant-numeric: tabular-nums; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -260,33 +197,6 @@ CONFIDENCE_THRESHOLD = 0.50
 FRAME_SKIP = 3
 MODELS_DIR = Path("models")
 DEFAULT_MODEL_PATH = "model_1.pt"
-
-# ============================================================
-# SMALL SAFE HELPERS (prevents ValueError)
-# ============================================================
-def safe_int(x, default=0) -> int:
-    try:
-        if pd.isna(x):
-            return default
-        return int(x)
-    except Exception:
-        return default
-
-def safe_float(x, default=0.0) -> float:
-    try:
-        if pd.isna(x):
-            return default
-        return float(x)
-    except Exception:
-        return default
-
-def pct_text(x) -> str:
-    try:
-        if x is None or pd.isna(x):
-            return "-"
-        return f"{float(x) * 100:.1f}%"
-    except Exception:
-        return "-"
 
 # ============================================================
 # POC COMPLIANCE LOGGING (SQLite)
@@ -310,13 +220,13 @@ def init_db():
         """
     CREATE TABLE IF NOT EXISTS observations (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        ts TEXT NOT NULL,
+        ts TEXT NOT NULL,               -- ISO UTC timestamp
         source_type TEXT NOT NULL,      -- image/video/realtime/dummy
         source_id TEXT NOT NULL,        -- filename/webrtc/seed
         area TEXT NOT NULL,             -- Malaysia location
         helmet_state TEXT NOT NULL,     -- ON/OFF/UNCERTAIN
         confidence REAL,
-        duration_s REAL NOT NULL
+        duration_s REAL NOT NULL        -- seconds represented by this record
     );
     """
     )
@@ -396,12 +306,20 @@ def load_observations_df(
 
 
 def compute_kpis(df: pd.DataFrame) -> dict:
+    """
+    Layman-friendly KPIs:
+    - compliance_rate: % of records that are ON out of ON+OFF
+    - violation_events: how many times the system detected 'no helmet' (OFF)
+    - violation_time_s: rough total seconds of 'no helmet' detected (POC estimate)
+    - unclear_rate: % of records where the system was not sure (UNCERTAIN)
+    - records_logged: how many detection logs stored in DB for the selected filters
+    """
     if df.empty:
         return {
-            "overall_compliance": None,
-            "no_helmet_cases": 0,
-            "no_helmet_time_s": 0.0,
-            "system_not_sure_rate": None,
+            "compliance_rate": None,
+            "violation_events": 0,
+            "violation_time_s": 0.0,
+            "unclear_rate": None,
             "records_logged": 0,
         }
 
@@ -413,53 +331,38 @@ def compute_kpis(df: pd.DataFrame) -> dict:
     total_s = on_s + off_s + un_s
 
     known = on_s + off_s
-    overall_compliance = (on_s / known) if known > 0 else None
-    system_not_sure_rate = (un_s / total_s) if total_s > 0 else None
+    compliance_rate = (on_s / known) if known > 0 else None
+    unclear_rate = (un_s / total_s) if total_s > 0 else None
 
-    no_helmet_cases = int((df["helmet_state"] == "OFF").sum())
+    violation_events = int((df["helmet_state"] == "OFF").sum())
 
     return {
-        "overall_compliance": overall_compliance,
-        "no_helmet_cases": no_helmet_cases,
-        "no_helmet_time_s": off_s,
-        "system_not_sure_rate": system_not_sure_rate,
+        "compliance_rate": compliance_rate,
+        "violation_events": violation_events,
+        "violation_time_s": off_s,
+        "unclear_rate": unclear_rate,
         "records_logged": records_logged,
     }
 
 
 def aggregate_by_area(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Robust per-area summary (NA-safe).
-    """
     if df.empty:
         return df
 
-    sec = df.groupby(["area", "helmet_state"])["duration_s"].sum().unstack(fill_value=0)
-    cnt = df.groupby(["area", "helmet_state"]).size().unstack(fill_value=0)
-
+    g = df.groupby(["area", "helmet_state"])["duration_s"].sum().unstack(fill_value=0).reset_index()
     for col in ["ON", "OFF", "UNCERTAIN"]:
-        if col not in sec.columns:
-            sec[col] = 0.0
-        if col not in cnt.columns:
-            cnt[col] = 0
+        if col not in g.columns:
+            g[col] = 0.0
 
-    out = pd.DataFrame({"area": sec.index})
-    out["helmet_time_s"] = pd.to_numeric(sec["ON"], errors="coerce").fillna(0.0)
-    out["no_helmet_time_s"] = pd.to_numeric(sec["OFF"], errors="coerce").fillna(0.0)
-    out["not_sure_time_s"] = pd.to_numeric(sec["UNCERTAIN"], errors="coerce").fillna(0.0)
+    g["known_s"] = g["ON"] + g["OFF"]
+    g["compliance_rate"] = g["ON"] / g["known_s"].replace({0: pd.NA})
 
-    out["helmet_cases"] = pd.to_numeric(cnt["ON"], errors="coerce").fillna(0).astype(int)
-    out["no_helmet_cases"] = pd.to_numeric(cnt["OFF"], errors="coerce").fillna(0).astype(int)
-    out["not_sure_cases"] = pd.to_numeric(cnt["UNCERTAIN"], errors="coerce").fillna(0).astype(int)
+    # Layman names
+    g["violation_time_s"] = g["OFF"]  # total seconds of OFF (rough)
+    g["total_s"] = g["ON"] + g["OFF"] + g["UNCERTAIN"]
+    g["unclear_rate"] = g["UNCERTAIN"] / g["total_s"].replace({0: pd.NA})
 
-    known_cases = (out["helmet_cases"] + out["no_helmet_cases"]).replace({0: pd.NA})
-    out["overall_compliance"] = out["helmet_cases"] / known_cases
-    out["no_helmet_rate"] = out["no_helmet_cases"] / known_cases
-
-    total_cases = (out["helmet_cases"] + out["no_helmet_cases"] + out["not_sure_cases"]).replace({0: pd.NA})
-    out["system_not_sure_rate"] = out["not_sure_cases"] / total_cases
-
-    return out.reset_index(drop=True)
+    return g
 
 
 def trend_over_time(df: pd.DataFrame, freq: str) -> pd.DataFrame:
@@ -471,73 +374,9 @@ def trend_over_time(df: pd.DataFrame, freq: str) -> pd.DataFrame:
         if col not in g.columns:
             g[col] = 0.0
     g["known_s"] = g["ON"] + g["OFF"]
-    g["overall_compliance"] = g["ON"] / g["known_s"].replace({0: pd.NA})
+    g["compliance_rate"] = g["ON"] / g["known_s"].replace({0: pd.NA})
     g.rename(columns={bucket_col: "bucket"}, inplace=True)
     return g
-
-
-def render_recommendations(by_area: pd.DataFrame) -> None:
-    if by_area is None or by_area.empty:
-        st.info("No recommendations available (no data).")
-        return
-
-    cand = by_area.copy()
-    cand["no_helmet_rate_num"] = pd.to_numeric(cand["no_helmet_rate"], errors="coerce")
-    cand["overall_compliance_num"] = pd.to_numeric(cand["overall_compliance"], errors="coerce")
-    cand["system_not_sure_rate_num"] = pd.to_numeric(cand["system_not_sure_rate"], errors="coerce")
-
-    cand = cand.sort_values(
-        ["no_helmet_cases", "no_helmet_rate_num"],
-        ascending=[False, False]
-    ).head(6)
-
-    cards = []
-    for _, r in cand.iterrows():
-        loc = str(r.get("area", "-"))
-        nh_cases = safe_int(r.get("no_helmet_cases", 0), 0)
-        nh_rate = r.get("no_helmet_rate_num")
-        comp = r.get("overall_compliance_num")
-        unsure = r.get("system_not_sure_rate_num")
-
-        nh_rate_txt = pct_text(nh_rate)
-        comp_txt = pct_text(comp)
-        unsure_txt = pct_text(unsure)
-
-        card_class = "low"
-        headline = "Low Priority"
-        action = "Monitor and review weekly."
-
-        if unsure is not None and not pd.isna(unsure) and float(unsure) >= 0.30:
-            card_class = "data"
-            headline = "Improve Camera / Data Quality"
-            action = "Improve camera angle/lighting; reduce blur; verify confidence before enforcement."
-        else:
-            if nh_rate is not None and not pd.isna(nh_rate) and float(nh_rate) >= 0.40 and nh_cases >= 5:
-                card_class = "high"
-                headline = "High Priority Enforcement"
-                action = "Deploy patrol or checkpoint during peak hours; conduct targeted safety operations."
-            elif nh_rate is not None and not pd.isna(nh_rate) and float(nh_rate) >= 0.20 and nh_cases >= 3:
-                card_class = "med"
-                headline = "Targeted Enforcement"
-                action = "Increase periodic patrols; add warning signage and public awareness; schedule follow-up checks."
-
-        cards.append(
-            f"""
-            <div class="rec-card {card_class}">
-              <div class="rec-title">{loc}<br/><span style="font-weight:800; color:#334155;">{headline}</span></div>
-              <div class="rec-meta">
-                <span class="rec-pill">No-Helmet Cases: {nh_cases}</span>
-                <span class="rec-pill">No-Helmet Rate: {nh_rate_txt}</span>
-                <span class="rec-pill">Compliance: {comp_txt}</span>
-                <span class="rec-pill">System Not Sure: {unsure_txt}</span>
-              </div>
-              <div class="rec-body">{action}</div>
-              <div class="rec-foot">POC note: video/live uses frame sampling, so counts are approximate.</div>
-            </div>
-            """
-        )
-
-    st.markdown(f"<div class='rec-wrap'>{''.join(cards)}</div>", unsafe_allow_html=True)
 
 
 init_db()
@@ -611,6 +450,9 @@ def detect_frame(frame, model, conf_threshold):
 
 
 def render_detection_table(detections: list[dict], model_name: str) -> None:
+    """
+    Pretty results card + table. Uses components.html, so we inline CSS (components are isolated).
+    """
     css = """
     <style>
       :root { --border:#e2e8f0; --muted:#64748b; --text:#0f172a; --bg:#ffffff; }
@@ -644,7 +486,7 @@ def render_detection_table(detections: list[dict], model_name: str) -> None:
     def badge_html(label: str) -> str:
         lab = (label or "").lower()
         non = lab in NO_HELMET_LABELS or lab.replace("_", "-") in NO_HELMET_LABELS
-        return '<span class="bad">No Helmet</span>' if non else '<span class="ok">Helmet</span>'
+        return '<span class="bad">Non-compliant</span>' if non else '<span class="ok">Compliant</span>'
 
     if not detections:
         html = f"""
@@ -698,7 +540,7 @@ def render_detection_table(detections: list[dict], model_name: str) -> None:
       <div class="head">
         <div>
           <div class="title">Results</div>
-          <div class="sub">YOLO output (label, confidence, bbox).</div>
+          <div class="sub">Populated from YOLO outputs (label, confidence, bbox).</div>
         </div>
         <div class="pill">Model: {model_name}</div>
       </div>
@@ -726,7 +568,7 @@ def render_detection_table(detections: list[dict], model_name: str) -> None:
       </div>
 
       <div class="foot">
-        Tip: Each run is automatically saved to Dashboard with the selected Malaysia location.
+        Tip: Dashboard auto-updates based on logged detections + selected Malaysia location.
       </div>
     </div>
     """
@@ -745,6 +587,7 @@ class HelmetTransformer(VideoTransformerBase):
         self.last_dets = []
         self.alert = False
 
+        # Logging throttle
         self.last_log_ts = 0.0
         self.area = "Unknown"
         self.source_id = "webrtc"
@@ -761,6 +604,7 @@ class HelmetTransformer(VideoTransformerBase):
             return img
 
         self.frame_cnt += 1
+
         if self.frame_cnt % FRAME_SKIP == 0:
             try:
                 detections, stats = detect_frame(img, self.model, self.conf)
@@ -769,6 +613,7 @@ class HelmetTransformer(VideoTransformerBase):
                 self.no_helmet = stats["no_helmet_count"]
                 self.alert = stats["alert"]
 
+                # Log roughly once per second (avoid DB spam)
                 now = time.time()
                 if now - self.last_log_ts >= 1.0:
                     helmet_state, state_conf = derive_scene_state(detections)
@@ -806,8 +651,10 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("**📍 Location (Malaysia)**")
+
     if "area_list" not in st.session_state:
         st.session_state.area_list = list(AREA_COORDS_MY.keys())
+
     current_area = st.selectbox("Select Location", st.session_state.area_list, key="current_area")
 
     st.markdown("---")
@@ -815,18 +662,19 @@ with st.sidebar:
     c1, c2 = st.columns(2)
 
     with c1:
-        if st.button("Create Dummy Data", key="dummy_logs"):
+        if st.button("🧪 Create Dummy Data", key="dummy_logs"):
             now = datetime.now(timezone.utc)
             areas = st.session_state.area_list[:]
-            for i in range(180):
-                ts = (now - timedelta(minutes=180 - i)).isoformat()
+            for i in range(120):
+                ts = (now - timedelta(minutes=120 - i)).isoformat()
                 area = areas[i % len(areas)]
+                # Bias for demo hotspots:
                 if "Bukit Bintang" in area or "Chow Kit" in area:
                     state = "OFF" if i % 2 == 0 else "ON"
                 elif "Johor Bahru" in area or "George Town" in area:
                     state = "OFF" if i % 4 == 0 else "ON"
                 else:
-                    state = "OFF" if i % 10 == 0 else "ON"
+                    state = "OFF" if i % 9 == 0 else "ON"
 
                 log_observation(
                     ts=ts,
@@ -840,7 +688,7 @@ with st.sidebar:
             st.success("Dummy data created. Open the Dashboard tab.")
 
     with c2:
-        if st.button("Clear Logs", key="clear_logs"):
+        if st.button("🧹 Clear Logs", key="clear_logs"):
             conn = get_conn()
             conn.execute("DELETE FROM observations")
             conn.commit()
@@ -869,7 +717,7 @@ model = _load_yolo(model_choice)
 # ============================================================
 # MAIN APP UI
 # ============================================================
-st.markdown('<h1 class="main-header">HelmetNet</h1>', unsafe_allow_html=True)
+st.markdown('<h1 class="main-header">🛡️ HelmetNet </h1>', unsafe_allow_html=True)
 st.markdown('<p class="sub-header">AI Helmet Detection System</p>', unsafe_allow_html=True)
 
 tab1, tab2, tab3, tab4 = st.tabs(
@@ -878,7 +726,7 @@ tab1, tab2, tab3, tab4 = st.tabs(
 
 # --- TAB 1: IMAGE DETECTION ---
 with tab1:
-    st.markdown("### Upload an Image")
+    st.markdown("### 📸 Upload an Image")
 
     col1, col2 = st.columns([2, 1])
     with col2:
@@ -906,6 +754,7 @@ with tab1:
             annotated = draw_boxes(frame, dets)
             st.session_state.total_detections += len(dets)
 
+            # Log one record (location stamped)
             helmet_state, state_conf = derive_scene_state(dets)
             log_observation(
                 ts=utc_now_iso(),
@@ -931,10 +780,10 @@ with tab1:
         st.info(f"Saved to Dashboard as location: {st.session_state.get('current_area','Unknown')}")
 
         if stats["alert"]:
-            st.markdown('<div class="alert-danger">NO HELMET DETECTED</div>', unsafe_allow_html=True)
+            st.markdown('<div class="alert-danger">⚠️ NO HELMET DETECTED!</div>', unsafe_allow_html=True)
             play_alarm()
         else:
-            st.markdown('<div class="alert-success">NO VIOLATION DETECTED</div>', unsafe_allow_html=True)
+            st.markdown('<div class="alert-success">✅ No violation detected</div>', unsafe_allow_html=True)
 
         st.markdown("### Summary")
         m1, m2, m3 = st.columns(3)
@@ -951,7 +800,7 @@ with tab1:
 
 # --- TAB 2: VIDEO DETECTION ---
 with tab2:
-    st.markdown("### Upload a Video")
+    st.markdown("### 🎥 Upload a Video")
 
     col1, col2 = st.columns([2, 1])
     with col2:
@@ -1049,7 +898,7 @@ with tab2:
 
 # --- TAB 3: REAL-TIME DETECTION (WEBRTC) ---
 with tab3:
-    st.markdown("### Real-Time Live Detection")
+    st.markdown("### 📱 Real-Time Live Detection")
     st.markdown(
         """
     <div class="info-box">
@@ -1083,22 +932,23 @@ with tab3:
         m2.metric("Violations", ctx.video_processor.no_helmet)
 
         if ctx.video_processor.alert:
-            st.markdown('<div class="alert-danger">NO HELMET DETECTED</div>', unsafe_allow_html=True)
+            st.markdown('<div class="alert-danger">⚠️ NO HELMET DETECTED!</div>', unsafe_allow_html=True)
             play_alarm()
         else:
-            st.markdown('<div class="alert-success">NO VIOLATION DETECTED</div>', unsafe_allow_html=True)
+            st.markdown('<div class="alert-success">✅ No violation detected</div>', unsafe_allow_html=True)
 
-# --- TAB 4: DASHBOARD (HOTSPOTS) ---
+# --- TAB 4: DASHBOARD (MAP HOTSPOTS) ---
 with tab4:
-    st.markdown("### Malaysia Helmet Violation Hotspots (POC)")
+    st.markdown("### 🗺️ Helmet Violation Hotspots (Malaysia) - POC")
 
     st.markdown(
-        '<div class="info-box"><strong>How to read:</strong><br>'
-        '• Bigger / redder points = more no-helmet detected at that location<br>'
-        '• Use the recommendations section to decide enforcement actions</div>',
+        '<div class="info-box"><strong>Simple meaning:</strong><br>'
+        '• Bigger / redder point = more "no helmet" detected at that location<br>'
+        '• Use this to decide where to do enforcement / roadblocks</div>',
         unsafe_allow_html=True,
     )
 
+    # Default: last 24 hours
     now = datetime.now(timezone.utc)
     default_start = (now - timedelta(hours=24)).date()
     default_end = now.date()
@@ -1128,24 +978,24 @@ with tab4:
     end_ts = (pd.Timestamp(end_date) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)).tz_localize("UTC").isoformat()
 
     df = load_observations_df(start_ts=start_ts, end_ts=end_ts, areas=areas, source_types=source_types)
+
+    # KPIs with layman wording
     k = compute_kpis(df)
-    by_area = aggregate_by_area(df) if not df.empty else pd.DataFrame()
 
-    # SAFE worst location (this is where your error happened before)
+    # Worst location based on total "no helmet time" (rough)
     worst_location = "-"
-    worst_cases = 0
-    if by_area is not None and not by_area.empty:
-        tmp = by_area.copy()
-        tmp["no_helmet_rate_num"] = pd.to_numeric(tmp["no_helmet_rate"], errors="coerce").fillna(-1)
-        tmp = tmp.sort_values(["no_helmet_cases", "no_helmet_rate_num"], ascending=[False, False])
-        w = tmp.iloc[0]
-        worst_location = str(w.get("area", "-"))
-        worst_cases = safe_int(w.get("no_helmet_cases", 0), 0)
+    worst_time = 0.0
+    by_area = aggregate_by_area(df) if not df.empty else pd.DataFrame()
+    if not by_area.empty:
+        worst = by_area.sort_values("violation_time_s", ascending=False).iloc[0]
+        worst_location = str(worst["area"])
+        worst_time = float(worst["violation_time_s"])
 
-    # compare to previous equal-length period (safe)
+    # Compare to previous period (same length)
     period_days = max((pd.Timestamp(end_date) - pd.Timestamp(start_date)).days + 1, 1)
     prev_end = pd.Timestamp(start_date).tz_localize("UTC") - pd.Timedelta(seconds=1)
     prev_start = prev_end - pd.Timedelta(days=period_days) + pd.Timedelta(seconds=1)
+
     df_prev = load_observations_df(
         start_ts=prev_start.isoformat(),
         end_ts=prev_end.isoformat(),
@@ -1153,26 +1003,14 @@ with tab4:
         source_types=source_types,
     )
     k_prev = compute_kpis(df_prev)
-    change_cases = safe_int(k.get("no_helmet_cases", 0), 0) - safe_int(k_prev.get("no_helmet_cases", 0), 0)
+    delta_viol = k["violation_events"] - k_prev["violation_events"]
 
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Total No-Helmet Cases", f"{safe_int(k.get('no_helmet_cases', 0), 0)}")
-    m2.metric("Worst Location", f"{worst_location}")
-    m3.metric("Overall Helmet Compliance", "-" if k["overall_compliance"] is None else f"{k['overall_compliance']*100:.1f}%")
-    m4.metric("Change vs Previous Period", f"{change_cases:+d} cases")
+    m1.metric("Total 'No Helmet' Cases", f"{k['violation_events']}")
+    m2.metric("Worst Location", worst_location)
+    m3.metric("Overall Helmet Compliance", "-" if k["compliance_rate"] is None else f"{k['compliance_rate']*100:.1f}%")
+    m4.metric("Change vs Previous Period", f"{delta_viol:+d} cases")
 
-    with st.expander("Meaning of the KPIs (simple terms)"):
-        st.markdown(
-            """
-- **Total No-Helmet Cases**: how many times the system detected someone without a helmet.
-- **Worst Location**: the location with the most no-helmet detections.
-- **Overall Helmet Compliance**: percent of “helmet detected” compared to “helmet + no-helmet”.
-- **Change vs Previous Period**: whether no-helmet detections went up or down compared to the previous time window.
-- **System Not Sure**: how often the system cannot decide (dark/blur/far objects). If high, fix camera first.
-            """
-        )
-
-    # ---------------- MAP ----------------
     st.markdown("#### Hotspot Map")
     if df.empty or by_area.empty:
         st.info("No data yet. Run detection or click 'Create Dummy Data' in sidebar.")
@@ -1182,16 +1020,12 @@ with tab4:
         map_df["lon"] = map_df["area"].apply(lambda a: AREA_COORDS_MY.get(a, (None, None))[1])
         map_df = map_df.dropna(subset=["lat", "lon"])
 
-        max_cases = safe_float(map_df["no_helmet_cases"].max(), 1.0)
-        if max_cases <= 0:
-            max_cases = 1.0
+        max_bad = float(map_df["violation_time_s"].max()) if float(map_df["violation_time_s"].max()) > 0 else 1.0
+        map_df["radius"] = (map_df["violation_time_s"] / max_bad) * 8000 + 1500
+        map_df["risk_score"] = (map_df["violation_time_s"] / max_bad)
 
-        map_df["risk_score"] = map_df["no_helmet_cases"] / max_cases
-        map_df["radius"] = map_df["risk_score"] * 8000 + 1500
+        # Color: higher risk_score -> more red
         map_df["color"] = map_df["risk_score"].apply(lambda r: [255, int(255 * (1 - r)), int(255 * (1 - r))])
-
-        map_df["compliance_text"] = map_df["overall_compliance"].apply(pct_text)
-        map_df["no_helmet_rate_text"] = map_df["no_helmet_rate"].apply(pct_text)
 
         import pydeck as pdk
 
@@ -1206,7 +1040,7 @@ with tab4:
         )
 
         tooltip = {
-            "html": "<b>{area}</b><br/>No-Helmet Cases: {no_helmet_cases}<br/>No-Helmet Rate: {no_helmet_rate_text}<br/>Compliance: {compliance_text}",
+            "html": "<b>{area}</b><br/>No-helmet time (rough): {violation_time_s} s<br/>Compliance: {compliance_rate}",
             "style": {"backgroundColor": "white", "color": "black"},
         }
 
@@ -1217,66 +1051,61 @@ with tab4:
         )
         st.pydeck_chart(deck, use_container_width=True)
 
-    # ---------------- TOP HOTSPOTS VISUALS ----------------
-    st.markdown("#### Top Hotspots (Visual)")
+    st.markdown("#### Top Locations (Enforcement Priority)")
     if not by_area.empty:
-        topN = by_area.sort_values(["no_helmet_cases", "no_helmet_rate"], ascending=[False, False]).head(10).copy()
-        topN = topN.set_index("area")
+        show = by_area.copy()
+        show["Overall Helmet Compliance"] = show["compliance_rate"].apply(lambda x: "-" if pd.isna(x) else f"{x*100:.1f}%")
+        show["System Not Sure %"] = show["unclear_rate"].apply(lambda x: "-" if pd.isna(x) else f"{x*100:.1f}%")
+        show["No-Helmet Time (rough, sec)"] = show["violation_time_s"].round(1)
 
-        cA, cB = st.columns(2)
-        with cA:
-            st.markdown("**No-Helmet Cases by Location (Top 10)**")
-            st.bar_chart(topN["no_helmet_cases"])
-
-        with cB:
-            st.markdown("**No-Helmet Rate by Location (Top 10)**")
-            st.bar_chart(topN["no_helmet_rate"])
-
-        st.markdown("#### Top Hotspots (Ranked Table)")
-        table = topN.reset_index()[[
+        table = show[[
             "area",
-            "no_helmet_cases",
-            "no_helmet_rate",
-            "overall_compliance",
-            "system_not_sure_rate",
-        ]].copy()
-
-        table["no_helmet_rate"] = table["no_helmet_rate"].apply(pct_text)
-        table["overall_compliance"] = table["overall_compliance"].apply(pct_text)
-        table["system_not_sure_rate"] = table["system_not_sure_rate"].apply(pct_text)
-
-        table = table.rename(columns={
+            "No-Helmet Time (rough, sec)",
+            "Overall Helmet Compliance",
+            "System Not Sure %",
+            "OFF",
+            "ON",
+            "UNCERTAIN",
+        ]].rename(columns={
             "area": "Location",
-            "no_helmet_cases": "No-Helmet Cases",
-            "no_helmet_rate": "No-Helmet Rate",
-            "overall_compliance": "Helmet Compliance",
-            "system_not_sure_rate": "System Not Sure",
+            "OFF": "No-Helmet seconds",
+            "ON": "Helmet seconds",
+            "UNCERTAIN": "Not sure seconds",
         })
 
-        st.dataframe(table, use_container_width=True)
+        st.dataframe(table.sort_values("No-Helmet Time (rough, sec)", ascending=False).head(10), use_container_width=True)
 
-    # ---------------- RECOMMENDATIONS (COLOR-CODED) ----------------
-    st.markdown("#### Recommended Actions (Easy to Read)")
-    render_recommendations(by_area)
+    st.markdown("#### Simple Recommendation (POC)")
+    if by_area is not None and not by_area.empty:
+        top = by_area.sort_values("violation_time_s", ascending=False).head(3)
+        recs = []
+        for _, r in top.iterrows():
+            loc = r["area"]
+            bad = float(r["violation_time_s"])
+            unc = r["unclear_rate"]
+            if unc is not None and not pd.isna(unc) and float(unc) > 0.30:
+                rec = "Improve camera angle/lighting first (system not sure too often)."
+            elif bad >= 30:
+                rec = "High hotspot: schedule enforcement/patrol during peak hours."
+            elif bad >= 10:
+                rec = "Medium hotspot: targeted patrol + warning signage."
+            else:
+                rec = "Low hotspot: monitor and review weekly."
+            recs.append(f"- **{loc}** → {rec}")
+        st.markdown("\n".join(recs))
 
-    # ---------------- TREND ----------------
-    st.markdown("#### Trend (Helmet Compliance Over Time)")
+    st.markdown("#### Trend (Compliance over time)")
     tr = trend_over_time(df, freq=freq)
-    if tr.empty:
-        st.info("No trend data available for the selected range.")
-    else:
-        tr2 = tr.set_index("bucket")[["overall_compliance", "OFF", "UNCERTAIN"]].copy()
-        st.line_chart(tr2[["overall_compliance"]])
+    if not tr.empty:
+        tr2 = tr.set_index("bucket")[["compliance_rate", "OFF", "UNCERTAIN"]]
+        st.line_chart(tr2[["compliance_rate"]])
         st.line_chart(tr2[["OFF", "UNCERTAIN"]])
 
-    # ---------------- RECENT VIOLATIONS ----------------
-    st.markdown("#### Recent No-Helmet Cases (Latest 20)")
-    if df.empty:
-        st.write("No data.")
-    else:
+    st.markdown("#### Recent 'No Helmet' Cases (latest 20)")
+    if not df.empty:
         recent = df[df["helmet_state"] == "OFF"].sort_values("ts", ascending=False).head(20).copy()
         if recent.empty:
-            st.write("No no-helmet cases in the selected range.")
+            st.write("No 'no helmet' cases in the selected range.")
         else:
             recent["Time (UTC)"] = recent["ts"].dt.strftime("%Y-%m-%d %H:%M:%S")
             recent_table = recent[["Time (UTC)", "area", "source_type", "source_id", "confidence"]].rename(
@@ -1285,4 +1114,4 @@ with tab4:
             st.dataframe(recent_table, use_container_width=True)
 
 st.markdown("---")
-st.caption("HelmetNet App | Malaysia Hotspot Dashboard with Recommendations (POC)")
+st.caption("HelmetNet App | Malaysia Hotspot Dashboard (POC)")
