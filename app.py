@@ -262,6 +262,33 @@ MODELS_DIR = Path("models")
 DEFAULT_MODEL_PATH = "model_1.pt"
 
 # ============================================================
+# SMALL SAFE HELPERS (prevents ValueError)
+# ============================================================
+def safe_int(x, default=0) -> int:
+    try:
+        if pd.isna(x):
+            return default
+        return int(x)
+    except Exception:
+        return default
+
+def safe_float(x, default=0.0) -> float:
+    try:
+        if pd.isna(x):
+            return default
+        return float(x)
+    except Exception:
+        return default
+
+def pct_text(x) -> str:
+    try:
+        if x is None or pd.isna(x):
+            return "-"
+        return f"{float(x) * 100:.1f}%"
+    except Exception:
+        return "-"
+
+# ============================================================
 # POC COMPLIANCE LOGGING (SQLite)
 # ============================================================
 DB_PATH = Path("helmetnet_poc.sqlite")
@@ -369,14 +396,6 @@ def load_observations_df(
 
 
 def compute_kpis(df: pd.DataFrame) -> dict:
-    """
-    Layman-friendly KPIs:
-    - overall_compliance: % of helmet-worn records out of helmet-worn + no-helmet
-    - no_helmet_cases: how many times 'no helmet' was detected (count of OFF logs)
-    - no_helmet_time_s: rough total seconds the system saw 'no helmet' (POC estimate)
-    - system_not_sure_rate: % of time system couldn't decide (UNCERTAIN)
-    - records_logged: how many logs exist in the selected date range/filters
-    """
     if df.empty:
         return {
             "overall_compliance": None,
@@ -410,18 +429,12 @@ def compute_kpis(df: pd.DataFrame) -> dict:
 
 def aggregate_by_area(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Produces a per-area summary that supports:
-    - map sizing (no_helmet_time_s)
-    - top hotspot charts (no_helmet_cases + no_helmet_rate)
-    - recommendation rules
+    Robust per-area summary (NA-safe).
     """
     if df.empty:
         return df
 
-    # seconds (duration) by state
     sec = df.groupby(["area", "helmet_state"])["duration_s"].sum().unstack(fill_value=0)
-
-    # counts (events) by state
     cnt = df.groupby(["area", "helmet_state"]).size().unstack(fill_value=0)
 
     for col in ["ON", "OFF", "UNCERTAIN"]:
@@ -431,20 +444,20 @@ def aggregate_by_area(df: pd.DataFrame) -> pd.DataFrame:
             cnt[col] = 0
 
     out = pd.DataFrame({"area": sec.index})
-    out["helmet_time_s"] = sec["ON"].astype(float)
-    out["no_helmet_time_s"] = sec["OFF"].astype(float)            # rough
-    out["not_sure_time_s"] = sec["UNCERTAIN"].astype(float)
+    out["helmet_time_s"] = pd.to_numeric(sec["ON"], errors="coerce").fillna(0.0)
+    out["no_helmet_time_s"] = pd.to_numeric(sec["OFF"], errors="coerce").fillna(0.0)
+    out["not_sure_time_s"] = pd.to_numeric(sec["UNCERTAIN"], errors="coerce").fillna(0.0)
 
-    out["helmet_cases"] = cnt["ON"].astype(int)
-    out["no_helmet_cases"] = cnt["OFF"].astype(int)
-    out["not_sure_cases"] = cnt["UNCERTAIN"].astype(int)
+    out["helmet_cases"] = pd.to_numeric(cnt["ON"], errors="coerce").fillna(0).astype(int)
+    out["no_helmet_cases"] = pd.to_numeric(cnt["OFF"], errors="coerce").fillna(0).astype(int)
+    out["not_sure_cases"] = pd.to_numeric(cnt["UNCERTAIN"], errors="coerce").fillna(0).astype(int)
 
-    known_cases = out["helmet_cases"] + out["no_helmet_cases"]
-    out["overall_compliance"] = out["helmet_cases"] / known_cases.replace({0: pd.NA})
-    out["no_helmet_rate"] = out["no_helmet_cases"] / known_cases.replace({0: pd.NA})
+    known_cases = (out["helmet_cases"] + out["no_helmet_cases"]).replace({0: pd.NA})
+    out["overall_compliance"] = out["helmet_cases"] / known_cases
+    out["no_helmet_rate"] = out["no_helmet_cases"] / known_cases
 
-    total_cases = out["helmet_cases"] + out["no_helmet_cases"] + out["not_sure_cases"]
-    out["system_not_sure_rate"] = out["not_sure_cases"] / total_cases.replace({0: pd.NA})
+    total_cases = (out["helmet_cases"] + out["no_helmet_cases"] + out["not_sure_cases"]).replace({0: pd.NA})
+    out["system_not_sure_rate"] = out["not_sure_cases"] / total_cases
 
     return out.reset_index(drop=True)
 
@@ -464,55 +477,46 @@ def trend_over_time(df: pd.DataFrame, freq: str) -> pd.DataFrame:
 
 
 def render_recommendations(by_area: pd.DataFrame) -> None:
-    """
-    Color-coded recommendation panel for authorities.
-    We prioritize:
-    - Data Quality Fix if system_not_sure_rate is high
-    - Otherwise enforce at places with high no_helmet_rate + significant volume
-    """
     if by_area is None or by_area.empty:
         st.info("No recommendations available (no data).")
         return
 
-    # pick top 6 by "no_helmet_cases" primarily, then by "no_helmet_rate"
     cand = by_area.copy()
-    cand["no_helmet_rate_num"] = cand["no_helmet_rate"].astype("float")
-    cand["overall_compliance_num"] = cand["overall_compliance"].astype("float")
-    cand["system_not_sure_rate_num"] = cand["system_not_sure_rate"].astype("float")
-    cand = cand.sort_values(["no_helmet_cases", "no_helmet_rate_num"], ascending=[False, False]).head(6)
+    cand["no_helmet_rate_num"] = pd.to_numeric(cand["no_helmet_rate"], errors="coerce")
+    cand["overall_compliance_num"] = pd.to_numeric(cand["overall_compliance"], errors="coerce")
+    cand["system_not_sure_rate_num"] = pd.to_numeric(cand["system_not_sure_rate"], errors="coerce")
+
+    cand = cand.sort_values(
+        ["no_helmet_cases", "no_helmet_rate_num"],
+        ascending=[False, False]
+    ).head(6)
 
     cards = []
     for _, r in cand.iterrows():
-        loc = str(r["area"])
-        nh_cases = int(r["no_helmet_cases"])
-        nh_rate = r["no_helmet_rate_num"]
-        comp = r["overall_compliance_num"]
-        unsure = r["system_not_sure_rate_num"]
-        nh_time = float(r["no_helmet_time_s"])
+        loc = str(r.get("area", "-"))
+        nh_cases = safe_int(r.get("no_helmet_cases", 0), 0)
+        nh_rate = r.get("no_helmet_rate_num")
+        comp = r.get("overall_compliance_num")
+        unsure = r.get("system_not_sure_rate_num")
 
-        nh_rate_txt = "-" if pd.isna(nh_rate) else f"{nh_rate*100:.1f}%"
-        comp_txt = "-" if pd.isna(comp) else f"{comp*100:.1f}%"
-        unsure_txt = "-" if pd.isna(unsure) else f"{unsure*100:.1f}%"
+        nh_rate_txt = pct_text(nh_rate)
+        comp_txt = pct_text(comp)
+        unsure_txt = pct_text(unsure)
 
-        # Rules (POC):
-        # 1) If unsure > 30% -> data quality
-        # 2) Else if no-helmet rate >= 40% and cases >= 5 -> high enforcement
-        # 3) Else if no-helmet rate >= 20% and cases >= 3 -> medium
-        # 4) Else -> low
         card_class = "low"
         headline = "Low Priority"
         action = "Monitor and review weekly."
 
-        if (not pd.isna(unsure)) and float(unsure) >= 0.30:
+        if unsure is not None and not pd.isna(unsure) and float(unsure) >= 0.30:
             card_class = "data"
             headline = "Improve Camera / Data Quality"
-            action = "Improve camera angle/lighting; reduce blur; verify model confidence before enforcement."
+            action = "Improve camera angle/lighting; reduce blur; verify confidence before enforcement."
         else:
-            if (not pd.isna(nh_rate)) and float(nh_rate) >= 0.40 and nh_cases >= 5:
+            if nh_rate is not None and not pd.isna(nh_rate) and float(nh_rate) >= 0.40 and nh_cases >= 5:
                 card_class = "high"
                 headline = "High Priority Enforcement"
-                action = "Deploy patrol or enforcement checkpoint during peak hours; conduct targeted safety operations."
-            elif (not pd.isna(nh_rate)) and float(nh_rate) >= 0.20 and nh_cases >= 3:
+                action = "Deploy patrol or checkpoint during peak hours; conduct targeted safety operations."
+            elif nh_rate is not None and not pd.isna(nh_rate) and float(nh_rate) >= 0.20 and nh_cases >= 3:
                 card_class = "med"
                 headline = "Targeted Enforcement"
                 action = "Increase periodic patrols; add warning signage and public awareness; schedule follow-up checks."
@@ -528,17 +532,12 @@ def render_recommendations(by_area: pd.DataFrame) -> None:
                 <span class="rec-pill">System Not Sure: {unsure_txt}</span>
               </div>
               <div class="rec-body">{action}</div>
-              <div class="rec-foot">POC metric note: “No-Helmet Time” is a rough estimate from sampled frames (video/live).</div>
+              <div class="rec-foot">POC note: video/live uses frame sampling, so counts are approximate.</div>
             </div>
             """
         )
 
-    html = f"""
-    <div class="rec-wrap">
-      {''.join(cards)}
-    </div>
-    """
-    st.markdown(html, unsafe_allow_html=True)
+    st.markdown(f"<div class='rec-wrap'>{''.join(cards)}</div>", unsafe_allow_html=True)
 
 
 init_db()
@@ -612,9 +611,6 @@ def detect_frame(frame, model, conf_threshold):
 
 
 def render_detection_table(detections: list[dict], model_name: str) -> None:
-    """
-    Pretty results card + table. Uses components.html, so we inline CSS (components are isolated).
-    """
     css = """
     <style>
       :root { --border:#e2e8f0; --muted:#64748b; --text:#0f172a; --bg:#ffffff; }
@@ -749,7 +745,6 @@ class HelmetTransformer(VideoTransformerBase):
         self.last_dets = []
         self.alert = False
 
-        # logging throttle
         self.last_log_ts = 0.0
         self.area = "Unknown"
         self.source_id = "webrtc"
@@ -826,7 +821,6 @@ with st.sidebar:
             for i in range(180):
                 ts = (now - timedelta(minutes=180 - i)).isoformat()
                 area = areas[i % len(areas)]
-                # Bias for demo hotspots:
                 if "Bukit Bintang" in area or "Chow Kit" in area:
                     state = "OFF" if i % 2 == 0 else "ON"
                 elif "Johor Bahru" in area or "George Town" in area:
@@ -1105,7 +1099,6 @@ with tab4:
         unsafe_allow_html=True,
     )
 
-    # default: last 24 hours
     now = datetime.now(timezone.utc)
     default_start = (now - timedelta(hours=24)).date()
     default_end = now.date()
@@ -1138,15 +1131,18 @@ with tab4:
     k = compute_kpis(df)
     by_area = aggregate_by_area(df) if not df.empty else pd.DataFrame()
 
-    # KPI strip (easy wording)
+    # SAFE worst location (this is where your error happened before)
     worst_location = "-"
     worst_cases = 0
-    if not by_area.empty:
-        w = by_area.sort_values(["no_helmet_cases", "no_helmet_rate"], ascending=[False, False]).iloc[0]
-        worst_location = str(w["area"])
-        worst_cases = int(w["no_helmet_cases"])
+    if by_area is not None and not by_area.empty:
+        tmp = by_area.copy()
+        tmp["no_helmet_rate_num"] = pd.to_numeric(tmp["no_helmet_rate"], errors="coerce").fillna(-1)
+        tmp = tmp.sort_values(["no_helmet_cases", "no_helmet_rate_num"], ascending=[False, False])
+        w = tmp.iloc[0]
+        worst_location = str(w.get("area", "-"))
+        worst_cases = safe_int(w.get("no_helmet_cases", 0), 0)
 
-    # compare to previous equal-length period
+    # compare to previous equal-length period (safe)
     period_days = max((pd.Timestamp(end_date) - pd.Timestamp(start_date)).days + 1, 1)
     prev_end = pd.Timestamp(start_date).tz_localize("UTC") - pd.Timedelta(seconds=1)
     prev_start = prev_end - pd.Timedelta(days=period_days) + pd.Timedelta(seconds=1)
@@ -1157,11 +1153,11 @@ with tab4:
         source_types=source_types,
     )
     k_prev = compute_kpis(df_prev)
-    change_cases = k["no_helmet_cases"] - k_prev["no_helmet_cases"]
+    change_cases = safe_int(k.get("no_helmet_cases", 0), 0) - safe_int(k_prev.get("no_helmet_cases", 0), 0)
 
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Total No-Helmet Cases", f"{k['no_helmet_cases']}")
-    m2.metric("Worst Location", worst_location)
+    m1.metric("Total No-Helmet Cases", f"{safe_int(k.get('no_helmet_cases', 0), 0)}")
+    m2.metric("Worst Location", f"{worst_location}")
     m3.metric("Overall Helmet Compliance", "-" if k["overall_compliance"] is None else f"{k['overall_compliance']*100:.1f}%")
     m4.metric("Change vs Previous Period", f"{change_cases:+d} cases")
 
@@ -1169,10 +1165,10 @@ with tab4:
         st.markdown(
             """
 - **Total No-Helmet Cases**: how many times the system detected someone without a helmet.
-- **Worst Location**: the location with the highest number of no-helmet detections.
-- **Overall Helmet Compliance**: percentage of “helmet detected” compared to “helmet + no-helmet”.
-- **Change vs Previous Period**: difference in no-helmet cases compared to the previous time window.
-- **System Not Sure**: how often the system cannot decide (poor lighting/blur/far objects). High value suggests camera improvements.
+- **Worst Location**: the location with the most no-helmet detections.
+- **Overall Helmet Compliance**: percent of “helmet detected” compared to “helmet + no-helmet”.
+- **Change vs Previous Period**: whether no-helmet detections went up or down compared to the previous time window.
+- **System Not Sure**: how often the system cannot decide (dark/blur/far objects). If high, fix camera first.
             """
         )
 
@@ -1186,13 +1182,16 @@ with tab4:
         map_df["lon"] = map_df["area"].apply(lambda a: AREA_COORDS_MY.get(a, (None, None))[1])
         map_df = map_df.dropna(subset=["lat", "lon"])
 
-        # risk weighting by no-helmet cases (simple + easy to explain)
-        max_cases = float(map_df["no_helmet_cases"].max()) if float(map_df["no_helmet_cases"].max()) > 0 else 1.0
+        max_cases = safe_float(map_df["no_helmet_cases"].max(), 1.0)
+        if max_cases <= 0:
+            max_cases = 1.0
+
         map_df["risk_score"] = map_df["no_helmet_cases"] / max_cases
         map_df["radius"] = map_df["risk_score"] * 8000 + 1500
-
-        # color ramp: high risk -> more red
         map_df["color"] = map_df["risk_score"].apply(lambda r: [255, int(255 * (1 - r)), int(255 * (1 - r))])
+
+        map_df["compliance_text"] = map_df["overall_compliance"].apply(pct_text)
+        map_df["no_helmet_rate_text"] = map_df["no_helmet_rate"].apply(pct_text)
 
         import pydeck as pdk
 
@@ -1205,12 +1204,6 @@ with tab4:
             pickable=True,
             auto_highlight=True,
         )
-
-        def pct(x):
-            return "-" if pd.isna(x) else f"{float(x)*100:.1f}%"
-
-        map_df["compliance_text"] = map_df["overall_compliance"].apply(pct)
-        map_df["no_helmet_rate_text"] = map_df["no_helmet_rate"].apply(pct)
 
         tooltip = {
             "html": "<b>{area}</b><br/>No-Helmet Cases: {no_helmet_cases}<br/>No-Helmet Rate: {no_helmet_rate_text}<br/>Compliance: {compliance_text}",
@@ -1226,7 +1219,6 @@ with tab4:
 
     # ---------------- TOP HOTSPOTS VISUALS ----------------
     st.markdown("#### Top Hotspots (Visual)")
-
     if not by_area.empty:
         topN = by_area.sort_values(["no_helmet_cases", "no_helmet_rate"], ascending=[False, False]).head(10).copy()
         topN = topN.set_index("area")
@@ -1238,7 +1230,6 @@ with tab4:
 
         with cB:
             st.markdown("**No-Helmet Rate by Location (Top 10)**")
-            # show % as 0-1 numeric (streamlit will chart it)
             st.bar_chart(topN["no_helmet_rate"])
 
         st.markdown("#### Top Hotspots (Ranked Table)")
@@ -1250,9 +1241,9 @@ with tab4:
             "system_not_sure_rate",
         ]].copy()
 
-        table["no_helmet_rate"] = table["no_helmet_rate"].apply(lambda x: "-" if pd.isna(x) else f"{float(x)*100:.1f}%")
-        table["overall_compliance"] = table["overall_compliance"].apply(lambda x: "-" if pd.isna(x) else f"{float(x)*100:.1f}%")
-        table["system_not_sure_rate"] = table["system_not_sure_rate"].apply(lambda x: "-" if pd.isna(x) else f"{float(x)*100:.1f}%")
+        table["no_helmet_rate"] = table["no_helmet_rate"].apply(pct_text)
+        table["overall_compliance"] = table["overall_compliance"].apply(pct_text)
+        table["system_not_sure_rate"] = table["system_not_sure_rate"].apply(pct_text)
 
         table = table.rename(columns={
             "area": "Location",
