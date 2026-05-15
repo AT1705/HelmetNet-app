@@ -300,7 +300,7 @@ def load_observations_df(
         return df
 
     df["ts"] = pd.to_datetime(df["ts"], utc=True, errors="coerce")
-    df["bucket_hour"] = df["ts"].dt.floor("H")
+    df["bucket_hour"] = df["ts"].dt.floor("h")
     df["bucket_day"] = df["ts"].dt.floor("D")
     return df
 
