@@ -10,4 +10,4 @@ twilio
 numpy
 pandas
 tornado
-cv2
+opencv-python
