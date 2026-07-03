@@ -10,3 +10,4 @@ twilio
 numpy
 pandas
 tornado
+libgl1-mesa-glx
